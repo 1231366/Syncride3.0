@@ -1,0 +1,34 @@
+18/11/2025 19:24:56 -> Iniciando envio para a viagem ID: 24675753
+18/11/2025 19:24:56 -> SUCESSO: O servidor aceitou o email para entrega.
+18/11/2025 19:29:53 -> Tentando envio SIMPLES para a viagem ID: 24675753
+18/11/2025 19:29:53 -> SUCESSO: Email simples aceite pelo servidor.
+18/11/2025 19:37:09 -> A preparar envio SMTP para ID: 24675753
+18/11/2025 19:37:09 -> ERRO SMTP: SMTP Error: Could not connect to SMTP host. Failed to connect to server SMTP server error: Failed to connect to server SMTP code: 101 Additional SMTP info: Network is unreachable
+18/11/2025 19:37:37 -> A preparar envio SMTP para ID: 24675753
+18/11/2025 19:37:37 -> ERRO SMTP: SMTP Error: Could not connect to SMTP host. Failed to connect to server SMTP server error: Failed to connect to server SMTP code: 101 Additional SMTP info: Network is unreachable
+18/11/2025 19:43:28 -> A preparar envio SSL (465) para ID: 24675753
+18/11/2025 19:43:28 -> ERRO SMTP: SMTP Error: Could not connect to SMTP host. Failed to connect to server SMTP server error: Failed to connect to server SMTP code: 101 Additional SMTP info: Network is unreachable
+18/11/2025 19:49:15 -> A iniciar envio SMTP autenticado para ID: 24675753
+18/11/2025 19:49:15 -> SUCESSO: Email enviado via Webminds SMTP!
+18/11/2025 19:54:57 -> A iniciar envio com localização para ID: 24675753
+18/11/2025 19:54:58 -> SUCESSO: Email enviado com coordenadas!
+18/11/2025 19:57:44 -> A iniciar envio com localização para ID: 24675753
+18/11/2025 19:57:44 -> SUCESSO: Email enviado com coordenadas!
+18/11/2025 19:59:08 -> A iniciar envio com localização para ID: 24675753
+18/11/2025 19:59:08 -> SUCESSO: Email enviado com coordenadas!
+18/11/2025 19:59:37 -> A iniciar envio com localização para ID: 24675753
+18/11/2025 19:59:38 -> SUCESSO: Email enviado com coordenadas!
+18/11/2025 20:00:41 -> A iniciar envio completo para ID: 24675753
+18/11/2025 20:00:56 -> SUCESSO: Email enviado com hora e local!
+18/11/2025 20:08:45 -> A iniciar envio completo para ID: 24675753
+18/11/2025 20:08:45 -> SUCESSO: Email enviado com hora e local!
+18/11/2025 20:08:58 -> A iniciar envio completo para ID: 24675753
+18/11/2025 20:08:58 -> SUCESSO: Email enviado com hora e local!
+18/11/2025 20:12:33 -> A iniciar envio completo para ID: 24675753
+18/11/2025 20:12:33 -> SUCESSO: Email enviado com hora e local!
+18/11/2025 20:13:17 -> A iniciar envio completo para ID: 24675753
+18/11/2025 20:13:17 -> SUCESSO: Email enviado com hora e local!
+18/11/2025 21:02:45 -> A iniciar envio para múltiplos destinatários. ID: 24675754
+18/11/2025 21:02:45 -> SUCESSO: Email enviado para ambos os destinatários!
+02/12/2025 23:55:08 -> A iniciar envio para destinatário de teste. ID: 24763608
+02/12/2025 23:55:13 -> SUCESSO: Email enviado para tiagofsilva04@gmail.com!

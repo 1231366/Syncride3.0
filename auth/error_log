@@ -1,0 +1,18 @@
+[30-Mar-2025 21:09:03 UTC] PHP Warning:  session_start(): Session cannot be started after headers have already been sent in /home/syncride/public_html/auth/auth.php on line 10
+[30-Mar-2025 21:11:34 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home/syncride/public_html/auth/auth.php on line 10
+[30-Mar-2025 21:12:34 UTC] PHP Warning:  session_start(): Session cannot be started after headers have already been sent in /home/syncride/public_html/auth/auth.php on line 10
+[30-Mar-2025 21:12:34 UTC] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/syncride/public_html/auth/dbconfig.php:19) in /home/syncride/public_html/auth/auth.php on line 39
+[21-Oct-2025 16:57:39 UTC] PHP Warning:  Undefined array key "email" in /home/syncride/public_html/auth/auth.php on line 14
+[21-Oct-2025 16:57:39 UTC] PHP Deprecated:  trim(): Passing null to parameter #1 ($string) of type string is deprecated in /home/syncride/public_html/auth/auth.php on line 14
+[21-Oct-2025 16:57:39 UTC] PHP Warning:  Undefined array key "pass" in /home/syncride/public_html/auth/auth.php on line 15
+[21-Oct-2025 16:57:39 UTC] PHP Deprecated:  trim(): Passing null to parameter #1 ($string) of type string is deprecated in /home/syncride/public_html/auth/auth.php on line 15
+[03-Dec-2025 14:35:35 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home/syncrid1/public_html/auth/auth.php on line 8
+[03-Dec-2025 14:35:35 UTC] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/syncrid1/public_html/auth/auth.php:8) in /home/syncrid1/public_html/auth/auth.php on line 63
+[03-Dec-2025 14:35:49 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home/syncrid1/public_html/auth/auth.php on line 8
+[03-Dec-2025 14:35:49 UTC] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/syncrid1/public_html/auth/auth.php:8) in /home/syncrid1/public_html/auth/auth.php on line 63
+[03-Dec-2025 14:36:21 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home/syncrid1/public_html/auth/auth.php on line 8
+[03-Dec-2025 14:36:21 UTC] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/syncrid1/public_html/auth/auth.php:8) in /home/syncrid1/public_html/auth/auth.php on line 63
+[03-Dec-2025 14:38:13 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home/syncrid1/public_html/auth/auth.php on line 8
+[03-Dec-2025 14:38:13 UTC] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/syncrid1/public_html/auth/auth.php:8) in /home/syncrid1/public_html/auth/auth.php on line 63
+[03-Dec-2025 14:40:35 UTC] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home/syncrid1/public_html/auth/auth.php on line 8
+[03-Dec-2025 14:40:35 UTC] PHP Warning:  Cannot modify header information - headers already sent by (output started at /home/syncrid1/public_html/auth/auth.php:8) in /home/syncrid1/public_html/auth/auth.php on line 63

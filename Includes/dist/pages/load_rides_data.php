@@ -1,8 +1,7 @@
 <?php
 // load_rides_data.php
 
-// 1. SILENCIAR ERROS DE TEXTO (Isto resolve o "Invalid JSON")
-// Se houver avisos de PHP, eles não vão ser impressos no ecrã, evitando quebrar o JSON
+// 1. SILENCIAR ERROS DE TEXTO
 error_reporting(0);
 ini_set('display_errors', 0);
 
@@ -14,7 +13,7 @@ $data = [];
 
 try {
     // 2. CONSTRUÇÃO DA QUERY COM LEFT JOIN
-    // Usamos LEFT JOIN para garantir que a viagem aparece MESMO SE não tiver condutor
+    // Adicionado s.total_price
     $sql = "
         SELECT 
             s.ID, 
@@ -28,6 +27,7 @@ try {
             s.NomeCliente, 
             s.ClientNumber, 
             s.serviceType,
+            s.total_price,
             u.name AS DriverName,
             u.id AS DriverID
         FROM Services s
@@ -57,7 +57,6 @@ try {
             break;
         case 'all':
         default:
-            // Sem filtro de data, mostra tudo (cuidado com performance futura)
             break;
     }
 
@@ -78,7 +77,6 @@ try {
         if ($row['DriverName']) {
             $condutorHtml = '<span class="badge bg-success" style="font-size: 0.9rem;">' . htmlspecialchars($row['DriverName']) . '</span>';
         } else {
-            // Botão para atribuir se não houver condutor
             $condutorHtml = '<button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#atribuirCondutorModal" onclick="setViagemId('.$row['ID'].')">
                                 <i class="bi bi-person-plus-fill"></i> Atribuir
                              </button>';
@@ -90,7 +88,7 @@ try {
             : '<span class="badge bg-warning text-dark">Partilhado</span>';
 
         // Botões de Ação (HTML)
-        // Nota: Escapamos as strings para evitar erros de JS nas aspas
+        // Adicionado s.total_price na função editTravel
         $acoes = '
             <div class="btn-group btn-group-sm">
                 <button class="btn btn-primary rounded-circle" data-bs-toggle="modal" data-bs-target="#editModal" 
@@ -105,13 +103,17 @@ try {
                         \''.addslashes($row['FlightNumber'] ?? '').'\', 
                         \''.addslashes($row['NomeCliente'] ?? '').'\', 
                         \''.addslashes($row['ClientNumber'] ?? '').'\', 
-                        '.$row['serviceType'].'
+                        '.$row['serviceType'].',
+                        \''.($row['total_price'] ?? '').'\'
                     )" title="Editar">
                     <i class="bi bi-pencil-fill"></i>
                 </button>
                 <button class="btn btn-danger rounded-circle ms-1" data-bs-toggle="modal" data-bs-target="#deleteTripModal" 
                     onclick="setDeleteTrip('.$row['ID'].', \''.addslashes($row['serviceStartPoint']).' -> '.addslashes($row['serviceTargetPoint']).'\')" title="Apagar">
                     <i class="bi bi-trash-fill"></i>
+                </button>
+                <button class="btn btn-info btn-sm rounded-circle shadow-sm ms-1" onclick="viewTripLogs('.$row['ID'].')" title="Ver Logs" style="width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;">
+                    <i class="bi bi-clock-history text-white"></i>
                 </button>
             </div>
         ';
@@ -127,11 +129,9 @@ try {
         ];
     }
 
-    // Enviar JSON Limpo
     echo json_encode(["data" => $data]);
 
 } catch (Exception $e) {
-    // Em caso de erro fatal, enviar JSON de erro para não quebrar a tabela silenciosamente
     echo json_encode(["data" => [], "error" => $e->getMessage()]);
 }
 ?>

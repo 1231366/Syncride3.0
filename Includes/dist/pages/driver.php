@@ -35,12 +35,13 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role']
             s.serviceStartTime, 
             s.serviceStartPoint, 
             s.serviceTargetPoint,
-            s.paxADT,
+            s.paxADT, 
             s.paxCHD,
-            s.FlightNumber,
-            s.NomeCliente,
+            s.FlightNumber, 
+            s.NomeCliente, 
             s.ClientNumber,
             s.serviceType,
+            s.total_price,
             COALESCE(s.status_id, 0) as status_id
         FROM Services_Rides sr
         INNER JOIN Services s ON sr.RideID = s.ID
@@ -288,6 +289,21 @@ echo "<script>
                                 
                                 <div id="whatsappContainer" class="mt-2" style="display:none;"></div>
                             </div>
+                        </div>
+                    </div>
+                    
+                    <div id="priceAlertContainer" style="display:none;">
+                        <div class="alert alert-success border-0 shadow-sm d-flex align-items-center justify-content-between p-3 mb-3" role="alert" style="border-radius: 12px; background: linear-gradient(45deg, #198754, #20c997); color: white;">
+                            <div class="d-flex align-items-center">
+                                <div class="bg-white text-success rounded-circle p-2 me-3 d-flex align-items-center justify-content-center" style="width: 45px; height: 45px;">
+                                    <i class="bi bi-cash-coin fs-3"></i>
+                                </div>
+                                <div>
+                                    <small class="d-block text-uppercase opacity-75 fw-bold" style="font-size: 0.7rem;">Cobrar ao Cliente</small>
+                                    <span class="fs-2 fw-bold" id="modalPriceDisplay">0.00€</span>
+                                </div>
+                            </div>
+                            <i class="bi bi-exclamation-circle-fill fs-4 opacity-50"></i>
                         </div>
                     </div>
 
@@ -621,7 +637,8 @@ echo "<script>
                        data-paxchd="${v.paxCHD||0}"
                        data-flight="${v.FlightNumber || ''}"
                        data-client="${v.NomeCliente || ''}"
-                       data-clientnumber="${v.ClientNumber || ''}">
+                       data-clientnumber="${v.ClientNumber || ''}"
+                       data-price="${v.total_price || ''}">
                     <div class="card-body p-3">
                        <div class="d-flex justify-content-between align-items-center mb-2">
                           <h4 class="fw-bold m-0 text-dark">${v.serviceStartTime.substr(0, 5)}</h4>
@@ -629,6 +646,9 @@ echo "<script>
                        </div>
                        <div class="text-truncate mb-1 text-secondary"><i class="bi bi-geo-alt-fill text-success me-2"></i> ${v.serviceStartPoint}</div>
                        <div class="text-truncate text-dark fw-medium"><i class="bi bi-flag-fill text-danger me-2"></i> ${v.serviceTargetPoint}</div>
+                       
+                       ${v.total_price > 0 ? '<div class="mt-2 text-end"><span class="badge bg-success"><i class="bi bi-cash"></i> Cobrar: ' + parseFloat(v.total_price).toFixed(2) + '€</span></div>' : ''}
+                       
                     </div>
                   </div>`;
                 el.innerHTML += html;
@@ -681,6 +701,18 @@ echo "<script>
                             <i class="bi bi-whatsapp me-2"></i> Enviar Mensagem
                         </a>`;
                 }
+            }
+            
+            // PREÇO NO MODAL
+            const priceContainer = document.getElementById('priceAlertContainer');
+            const priceDisplay = document.getElementById('modalPriceDisplay');
+            let priceVal = parseFloat(d.price);
+
+            if (d.price && priceVal > 0) {
+                priceDisplay.textContent = priceVal.toFixed(2) + " €";
+                priceContainer.style.display = "block";
+            } else {
+                priceContainer.style.display = "none";
             }
 
             // PLACA

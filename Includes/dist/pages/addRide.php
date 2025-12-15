@@ -14,12 +14,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $flightNumber = $_POST['FlightNumber']; // Número do voo
     $nomeCliente = $_POST['NomeCliente']; // Nome do cliente
     $clientNumber = $_POST['ClientNumber']; // Número do cliente
+    
+    // NOVO: Receber o preço (pode ser vazio, então usamos null)
+    $totalPrice = !empty($_POST['totalPrice']) ? $_POST['totalPrice'] : null;
 
     try {
         // Preparar a query para inserir a viagem na tabela "Services"
-        $stmt = $pdo->prepare("INSERT INTO Services (serviceDate, serviceStartTime, paxADT, paxCHD, serviceStartPoint, serviceTargetPoint, serviceType, FlightNumber, NomeCliente, ClientNumber) 
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$serviceDate, $serviceStartTime, $paxADT, $paxCHD, $serviceStartPoint, $serviceTargetPoint, $serviceType, $flightNumber, $nomeCliente, $clientNumber]);
+        $stmt = $pdo->prepare("INSERT INTO Services (serviceDate, serviceStartTime, paxADT, paxCHD, serviceStartPoint, serviceTargetPoint, serviceType, FlightNumber, NomeCliente, ClientNumber, total_price) 
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$serviceDate, $serviceStartTime, $paxADT, $paxCHD, $serviceStartPoint, $serviceTargetPoint, $serviceType, $flightNumber, $nomeCliente, $clientNumber, $totalPrice]);
 
         // Obter o ID da viagem recém-criada
         $rideId = $pdo->lastInsertId();

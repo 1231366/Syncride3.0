@@ -270,6 +270,12 @@ try {
                                 <label>Número do Cliente</label>
                                 <input type="text" class="form-control" name="ClientNumber" />
                             </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label text-success fw-bold"><i class="bi bi-cash-coin"></i> Valor a Cobrar (€)</label>
+                                <input type="number" step="0.01" class="form-control border-success" name="totalPrice" placeholder="Ex: 45.50 (Deixar vazio se já pago)">
+                            </div>
+                            
                             <button type="submit" class="btn btn-primary w-100">Criar</button>
                         </form>
                     </div>
@@ -343,6 +349,11 @@ try {
                             <div class="col-md-6"><label>Nº Cliente</label><input type="text" class="form-control" id="editclientNumber" name="edit_clientNumber" disabled></div>
                         </div>
                         
+                        <div class="mb-3">
+                            <label class="form-label text-success fw-bold">Valor a Cobrar (€)</label>
+                            <input type="number" step="0.01" class="form-control" id="editTotalPrice" name="edit_totalPrice" disabled>
+                        </div>
+
                         <div class="mt-3 pt-3 border-top">
                             <div class="d-flex align-items-center justify-content-between">
                                 <div class="flex-grow-1 me-2">
@@ -406,12 +417,8 @@ try {
                             "data": "acoes", 
                             "orderable": false,
                             "render": function (data, type, row) {
-                                // INJEÇÃO AUTOMÁTICA DO BOTÃO DE LOGS
                                 return `<div class="d-flex gap-1 justify-content-end align-items-center">
                                             ${data}
-                                            <button class="btn btn-info btn-sm rounded-circle shadow-sm" onclick="viewTripLogs(${row.id})" title="Ver Logs" style="width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;">
-                                                <i class="bi bi-clock-history text-white"></i>
-                                            </button>
                                         </div>`;
                             }
                         }
@@ -457,7 +464,8 @@ try {
                 new bootstrap.Modal(document.getElementById('changeTripTypeModal')).show();
             }
             
-            function editTravel(id, dataHora, condutor, recolha, entrega, paxADT, paxCHD, flightNumber, clientName, clientNumber, serviceType) {
+            // FUNÇÃO ATUALIZADA COM totalPrice
+            function editTravel(id, dataHora, condutor, recolha, entrega, paxADT, paxCHD, flightNumber, clientName, clientNumber, serviceType, totalPrice) {
                 disableEdit();
                 document.getElementById('editTripId').value = id;
                 document.getElementById('editDataHora').value = dataHora.replace(" ", "T");
@@ -469,6 +477,9 @@ try {
                 document.getElementById('editflightNumber').value = flightNumber;
                 document.getElementById('editclientName').value = clientName;
                 document.getElementById('editclientNumber').value = clientNumber;
+                
+                // Preencher o preço
+                document.getElementById('editTotalPrice').value = totalPrice;
 
                 const typeText = serviceType == 1 ? "Privado" : "Partilhado";
                 document.getElementById('editTripTypeDisplay').value = typeText;

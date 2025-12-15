@@ -3,29 +3,29 @@ require __DIR__ . '/../../../auth/dbconfig.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
-    // --- ALTERAÇÃO: Obter todos os campos do formulário ---
+    // Obter todos os campos do formulário
     $viagemId = $_POST['edit_trip_id'] ?? null;
     $dataHora = $_POST['edit_departure_datetime'] ?? null;
     $localRecolha = $_POST['edit_origin'] ?? null;
     $localEntrega = $_POST['edit_destination'] ?? null;
     
-    // Novos campos que vêm do formulário
-    $paxADT = $_POST['edit_paxADT'] ?? 0; // Usar 0 como padrão se for nulo
-    $paxCHD = $_POST['edit_paxCHD'] ?? 0; // Usar 0 como padrão se for nulo
+    // Campos adicionais
+    $paxADT = $_POST['edit_paxADT'] ?? 0;
+    $paxCHD = $_POST['edit_paxCHD'] ?? 0;
     $flightNumber = $_POST['edit_flightNumber'] ?? null;
     $nomeCliente = $_POST['edit_clientName'] ?? null;
     $clientNumber = $_POST['edit_clientNumber'] ?? null;
-    // --- FIM DA ALTERAÇÃO ---
+
+    // NOVO: Receber o preço da edição
+    $totalPrice = !empty($_POST['edit_totalPrice']) ? $_POST['edit_totalPrice'] : null;
 
     if ($viagemId && $dataHora) {
         try {
             // Separar data e hora corretamente
-            // Ex: "2025-11-08T14:30" → ["2025-11-08", "14:30"]
             list($data, $hora) = explode('T', $dataHora); 
-            $hora .= ":00"; // Adiciona segundos para garantir formato "HH:MM:SS"
+            $hora .= ":00"; // Adiciona segundos
 
-            // --- ALTERAÇÃO: SQL ATUALIZADO ---
-            // Atualizar a BD com todos os novos campos
+            // SQL ATUALIZADO
             $sql = "UPDATE Services 
                     SET serviceDate = :data, 
                         serviceStartTime = :hora, 
@@ -35,7 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         paxCHD = :paxCHD,
                         FlightNumber = :flightNumber,
                         NomeCliente = :nomeCliente,
-                        ClientNumber = :clientNumber
+                        ClientNumber = :clientNumber,
+                        total_price = :totalPrice
                     WHERE ID = :rideID";
 
             $stmt = $pdo->prepare($sql);
@@ -47,13 +48,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bindParam(':targetPoint', $localEntrega, PDO::PARAM_STR);
             $stmt->bindParam(':rideID', $viagemId, PDO::PARAM_INT);
 
-            // Bind dos novos parâmetros
             $stmt->bindParam(':paxADT', $paxADT, PDO::PARAM_INT);
             $stmt->bindParam(':paxCHD', $paxCHD, PDO::PARAM_INT);
             $stmt->bindParam(':flightNumber', $flightNumber, PDO::PARAM_STR);
             $stmt->bindParam(':nomeCliente', $nomeCliente, PDO::PARAM_STR);
             $stmt->bindParam(':clientNumber', $clientNumber, PDO::PARAM_STR);
-            // --- FIM DA ALTERAÇÃO ---
+            
+            // NOVO BIND
+            $stmt->bindParam(':totalPrice', $totalPrice, PDO::PARAM_STR);
             
             $stmt->execute();
 
@@ -62,7 +64,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
 
         } catch (PDOException $e) {
-            // Redireciona com erro
             header('Location: ManageRides.php?success=false&message=' . urlencode('Erro ao atualizar viagem: ' . $e->getMessage()));
             exit();
         }

@@ -5,7 +5,64 @@ require __DIR__ . '/../../../auth/dbconfig.php';
 $viagens = [];
 $serviceTypeFilter = isset($_GET['serviceType']) ? $_GET['serviceType'] : null; 
 
-// --- 1. VERIFICAÇÃO DE SESSÃO ---
+// --- 0. MODO API (AUTO-REFRESH) ---
+// Se o pedido tiver o parametro ?api=refresh, devolve JSON e para por aqui.
+if (isset($_GET['api']) && $_GET['api'] === 'refresh') {
+    header('Content-Type: application/json');
+    
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode([]);
+        exit();
+    }
+
+    $userId = $_SESSION['user_id'];
+    $filterType = isset($_GET['serviceType']) ? $_GET['serviceType'] : null;
+
+    try {
+        $query = "
+        SELECT 
+            s.ID AS ServiceID, 
+            s.serviceDate, 
+            s.serviceStartTime, 
+            s.serviceStartPoint, 
+            s.serviceTargetPoint,
+            s.paxADT, 
+            s.paxCHD,
+            s.FlightNumber, 
+            s.NomeCliente, 
+            s.ClientNumber,
+            s.serviceType,
+            s.total_price,
+            COALESCE(s.status_id, 0) as status_id
+        FROM Services_Rides sr
+        INNER JOIN Services s ON sr.RideID = s.ID
+        WHERE sr.UserID = ?";
+
+        if ($filterType !== null) {
+            $query .= " AND s.serviceType = ?";
+        }
+
+        $query .= " ORDER BY s.serviceDate ASC, s.serviceStartTime ASC";
+
+        $stmt = $pdo->prepare($query);
+
+        if ($filterType !== null) {
+            $stmt->execute([$userId, $filterType]);
+        } else {
+            $stmt->execute([$userId]);
+        }
+
+        $viagensData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode($viagensData);
+        exit(); // IMPORTANTE: Não carregar o resto do HTML
+
+    } catch (PDOException $e) {
+        echo json_encode([]);
+        exit();
+    }
+}
+
+// --- 1. VERIFICAÇÃO DE SESSÃO (Modo Normal) ---
 if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role'] === 2) {
     $userId = $_SESSION['user_id']; 
     $userName = $_SESSION['name'];
@@ -26,7 +83,7 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role']
         } catch (PDOException $e) {}
     }
 
-    // --- 3. FETCH DAS VIAGENS ---
+    // --- 3. FETCH INICIAL DAS VIAGENS ---
     try {
         $query = "
         SELECT 
@@ -145,19 +202,52 @@ echo "<script>
         /* MODO AEROPORTO (FUNDO PRETO) */
         #airportOverlay { 
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-            background: #000; /* Preto */
+            background: #000; 
             z-index: 99999; display: none; flex-direction: column; align-items: center; justify-content: center; 
-            text-align: center; padding: 10px; 
+            text-align: center; padding: 5px; 
         }
         #airportClientName { 
-            color: #fff; /* Branco */
-            font-weight: 900; line-height: 1.1; text-transform: uppercase; margin: 0; font-size: 15vw; 
-            word-break: break-word; font-family: 'Arial Black', sans-serif;
+            color: #fff; 
+            font-weight: 900; 
+            line-height: 1; 
+            text-transform: uppercase; 
+            margin: 0; 
+            font-size: 22vw; /* NOME GIGANTE */
+            width: 100%;
+            word-break: break-word; 
+            font-family: 'Arial Black', 'Helvetica Black', sans-serif;
         }
         .airport-controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 20px; z-index: 100001; }
         .airport-icon { color: #fff; font-size: 2.5rem; cursor: pointer; opacity: 0.5; }
         .airport-icon:hover { opacity: 1; }
         .rotate-mode .content-wrapper { transform: rotate(90deg); width: 100vh; height: 100vw; display:flex; justify-content:center; align-items:center; }
+
+        /* MODO CÂMERA FULL SCREEN */
+        #cameraOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 99999; 
+            display: none; flex-direction: column;
+        }
+        #cameraViewArea {
+            position: relative; flex: 1; width: 100%; overflow: hidden; background: #000;
+        }
+        #cameraStream, #photoCanvas {
+            width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;
+        }
+        .camera-ui-controls {
+            position: absolute; bottom: 0; left: 0; width: 100%; 
+            padding: 30px 10px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            display: flex; flex-direction: column; align-items: center; gap: 15px;
+        }
+        .camera-title {
+            position: absolute; top: 20px; left: 0; width: 100%; text-align: center;
+            color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10;
+            font-size: 1.2rem; font-weight: 600; pointer-events: none;
+        }
+        #cameraLoading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; text-align: center; display: none; z-index: 5;
+        }
 
         /* MENUS */
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 65px; background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; justify-content: space-around; align-items: center; z-index: 1000; border-top: 1px solid #eee; }
@@ -181,9 +271,47 @@ echo "<script>
             <i class="bi bi-arrow-repeat airport-icon" id="rotateScreenBtn" title="Rodar Ecrã"></i>
             <i class="bi bi-x-circle-fill airport-icon" id="closeAirportMode" title="Fechar"></i>
         </div>
-        <div class="content-wrapper w-100 h-100 d-flex flex-column align-items-center justify-content-center">
+        <div class="content-wrapper w-100 h-100 d-flex flex-column align-items-center justify-content: center">
             <h1 id="airportClientName">NOME</h1>
             <h2 id="airportFlight" class="mt-4 text-white fs-1"></h2>
+        </div>
+    </div>
+
+    <div id="cameraOverlay">
+        <div class="camera-title" id="cameraInstruction">Fotografar</div>
+        
+        <div id="cameraViewArea">
+            <div id="cameraLoading">
+                <div class="spinner-border text-light mb-2" role="status"></div>
+                <div>A iniciar câmara...</div>
+            </div>
+            <video id="cameraStream" autoplay playsinline></video>
+            <canvas id="photoCanvas" style="display: none;"></canvas>
+        </div>
+
+        <div class="camera-ui-controls">
+            
+            <div id="stepCaptureControls" class="d-flex w-100 justify-content-center align-items-center gap-4">
+                <button class="btn btn-light rounded-circle p-3 shadow" onclick="closeCameraOverlay()" style="width: 50px; height: 50px; opacity: 0.8;">
+                    <i class="bi bi-x-lg text-dark fs-5"></i>
+                </button>
+                <button class="btn btn-light rounded-circle p-1 border-4 border-white shadow" id="btnCapture" style="width: 80px; height: 80px;">
+                    <div class="bg-danger rounded-circle w-100 h-100"></div>
+                </button>
+                <button class="btn btn-light rounded-circle p-3 shadow" id="btnRotateCamera" style="width: 50px; height: 50px; opacity: 0.8;">
+                    <i class="bi bi-arrow-repeat text-dark fs-4"></i>
+                </button>
+            </div>
+
+            <div id="stepConfirmControls" class="d-none w-100 justify-content-center align-items-center gap-3">
+                <button class="btn btn-warning rounded-pill px-4 py-3 fw-bold shadow" id="btnRetake" style="min-width: 120px;">
+                    <i class="bi bi-arrow-counterclockwise me-2"></i> Repetir
+                </button>
+                <button class="btn btn-success rounded-pill px-4 py-3 fw-bold shadow" id="btnConfirmSend" style="min-width: 120px;">
+                    <i class="bi bi-send-fill me-2"></i> Enviar
+                </button>
+            </div>
+
         </div>
     </div>
 
@@ -193,7 +321,6 @@ echo "<script>
         <div class="container-fluid">
           <ul class="navbar-nav"><li class="nav-item"><a class="nav-link" data-lte-toggle="sidebar" href="#"><i class="bi bi-list"></i></a></li></ul>
           <ul class="navbar-nav ms-auto">
-            
             <li class="nav-item dropdown user-menu">
               <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
                 <img src="<?php echo $userPhotoPath; ?>" class="user-image rounded-circle shadow" alt="User Image">
@@ -202,10 +329,7 @@ echo "<script>
               <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
                 <li class="user-header text-bg-primary">
                   <img src="<?php echo $userPhotoPath; ?>" class="rounded-circle shadow" alt="User Image">
-                  <p>
-                    <?php echo $userName; ?>
-                    <small>Condutor SyncRide</small>
-                  </p>
+                  <p><?php echo $userName; ?><small>Condutor SyncRide</small></p>
                 </li>
                 <li class="user-footer">
                   <a href="#" class="btn btn-default btn-flat" data-bs-toggle="modal" data-bs-target="#photoModal">Perfil</a>
@@ -213,7 +337,6 @@ echo "<script>
                 </li>
               </ul>
             </li>
-
           </ul>
         </div>
       </nav>
@@ -286,7 +409,6 @@ echo "<script>
                                 <div class="text-muted small text-uppercase fw-bold">Cliente</div>
                                 <div id="modalClient" class="fw-bold text-dark fs-5"></div>
                                 <div id="modalClientNumber" class="text-muted small"></div>
-                                
                                 <div id="whatsappContainer" class="mt-2" style="display:none;"></div>
                             </div>
                         </div>
@@ -367,18 +489,6 @@ echo "<script>
                             </button>
                         </div>
                     </div>
-                    
-                    <div id="cameraContainer" class="mt-3 bg-white p-3 rounded border shadow-sm" style="display: none;">
-                      <p class="text-center mb-2 fw-bold" id="cameraInstruction">Tirar Foto</p>
-                      <div style="position: relative; padding-top: 100%; overflow: hidden; border-radius: 8px; background: #000;">
-                          <video id="cameraStream" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" autoplay playsinline></video>
-                          <canvas id="photoCanvas" style="display: none; width: 100%; height: 100%;"></canvas>
-                      </div>
-                      <div class="d-flex gap-2 mt-3">
-                          <button class="btn btn-light flex-grow-1" onclick="stopCameraStream(); document.getElementById('cameraContainer').style.display='none';">Cancelar</button>
-                          <button class="btn btn-primary flex-grow-1" id="capturePhoto">📸 Capturar</button>
-                      </div>
-                    </div>
 
                   </div>
                 </div>
@@ -431,13 +541,46 @@ echo "<script>
         let currentRideId = null;
         let currentRideData = null;
         let localTripStatus = {};
+        
+        let currentFilter = "today"; 
+
+        // Variáveis para a Câmara e GPS
+        let stream = null; 
+        let currentMode = 'noshow';
+        let currentFacingMode = 'environment'; 
+        let locationWatcher = null; 
+        let currentLat = null;
+        let currentLng = null;
 
         // Inicializar estados
-        viagens.forEach(v => {
-            localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0;
-        });
+        if (typeof viagens !== 'undefined') {
+            viagens.forEach(v => {
+                localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0;
+            });
+        }
 
-        // --- GPS ---
+        // --- AUTO REFRESH (API POLLING) ---
+        function fetchLatestRides() {
+            fetch('driver.php?api=refresh')
+                .then(response => response.json())
+                .then(data => {
+                    if (Array.isArray(data)) {
+                        viagens = data;
+                        viagens.forEach(v => {
+                            if (localTripStatus[v.ServiceID] === undefined) {
+                                localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0;
+                            }
+                        });
+                        filterTrips(currentFilter);
+                    }
+                })
+                .catch(err => console.log('Auto-refresh error:', err));
+        }
+
+        // Atualiza a cada 15 segundos
+        setInterval(fetchLatestRides, 15000);
+
+        // --- GPS DE FUNDO (TRACKING) ---
         function sendPosition(position) {
             if(!currentRideId) return;
             const lat = position.latitude || position.coords?.latitude;
@@ -452,7 +595,7 @@ echo "<script>
 
             const payload = {
                 ride_id: currentRideId,
-                driver_id: <?php echo $_SESSION['user_id']; ?>,
+                driver_id: <?php echo $_SESSION['user_id'] ?? 0; ?>,
                 lat: lat, lng: lng, speed: speed, heading: heading
             };
             
@@ -506,11 +649,14 @@ echo "<script>
         // --- FUNÇÕES DE INTERFACE ---
 
         function openWaze(address) {
-            window.open("https://waze.com/ul?q=" + encodeURIComponent(address) + "&navigate=yes", '_blank');
+            // PROTOCOLO SEM FALHAS: waze://
+            const dest = encodeURIComponent(address);
+            window.location.href = "waze://?q=" + dest + "&navigate=yes";
         }
 
         function updateButtonUI(status) {
             const btn = document.getElementById('btnDynamicAction');
+            if(!btn) return;
             btn.className = 'btn-dynamic-action'; 
             
             switch(parseInt(status)) {
@@ -556,8 +702,10 @@ echo "<script>
                     updateButtonUI(nextStatus);
                     if(nextStatus === 4) {
                         setTimeout(() => {
-                            bootstrap.Modal.getInstance(document.getElementById('detailsModal')).hide();
-                            location.reload(); 
+                            const modalEl = document.getElementById('detailsModal');
+                            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                            if(modalInstance) modalInstance.hide();
+                            fetchLatestRides(); // Atualiza lista
                         }, 1000);
                     }
                 } else { alert('Erro ao atualizar estado.'); }
@@ -566,35 +714,38 @@ echo "<script>
         }
 
         // --- BOTÃO DINÂMICO ---
-        document.getElementById('btnDynamicAction').addEventListener('click', function() {
-            if(!currentRideData) return;
-            const rideId = currentRideData.id;
-            const currentStatus = localTripStatus[rideId];
-            const nextStatus = currentStatus + 1;
+        const btnAction = document.getElementById('btnDynamicAction');
+        if(btnAction) {
+            btnAction.addEventListener('click', function() {
+                if(!currentRideData) return;
+                const rideId = currentRideData.id;
+                const currentStatus = localTripStatus[rideId];
+                const nextStatus = currentStatus + 1;
 
-            if(nextStatus > 4) return;
+                if(nextStatus > 4) return;
 
-            if(currentStatus === 0) {
-                if(!confirm("Iniciar recolha e abrir GPS?")) return;
-                startLiveTracking(rideId);
-                openWaze(currentRideData.start);
-            }
-            else if(currentStatus === 1) {
-                if(!confirm("Confirma que chegou ao ponto de recolha?")) return;
-            }
-            else if(currentStatus === 2) {
-                if(!confirm("Cliente a bordo? Iniciar viagem para destino.")) return;
-                openWaze(currentRideData.end);
-            }
-            else if(currentStatus === 3) {
-                if(!confirm("Terminar viagem e fechar serviço?")) return;
-                stopLiveTracking();
-            }
+                if(currentStatus === 0) {
+                    if(!confirm("Iniciar recolha e abrir GPS?")) return;
+                    startLiveTracking(rideId);
+                    openWaze(currentRideData.start);
+                }
+                else if(currentStatus === 1) {
+                    if(!confirm("Confirma que chegou ao ponto de recolha?")) return;
+                }
+                else if(currentStatus === 2) {
+                    if(!confirm("Cliente a bordo? Iniciar viagem para destino.")) return;
+                    openWaze(currentRideData.end);
+                }
+                else if(currentStatus === 3) {
+                    if(!confirm("Terminar viagem e fechar serviço?")) return;
+                    stopLiveTracking();
+                }
 
-            updateStatusBackend(rideId, nextStatus);
-        });
+                updateStatusBackend(rideId, nextStatus);
+            });
+        }
 
-        // --- FILTROS DE LISTA ---
+        // --- FILTROS ---
         function formatDate(date) {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -603,6 +754,8 @@ echo "<script>
         }
 
         function filterTrips(filter) {
+            currentFilter = filter;
+            if (typeof viagens === 'undefined') return;
             const t = new Date();
             const y = new Date(t); y.setDate(t.getDate() - 1);
             const tm = new Date(t); tm.setDate(t.getDate() + 1);
@@ -613,6 +766,7 @@ echo "<script>
 
         function renderList(data) {
             const el = document.querySelector(".list-group");
+            if(!el) return;
             el.innerHTML = ""; 
             if (data.length === 0) {
                 el.innerHTML = "<div class='text-center py-5 text-muted opacity-50'><i class='bi bi-calendar-x fs-1'></i><p>Sem viagens.</p></div>";
@@ -666,78 +820,76 @@ echo "<script>
         });
 
         // --- ABRIR MODAL ---
-        const modal = document.getElementById('detailsModal');
-        document.querySelector(".list-group").addEventListener("click", e => {
-            const card = e.target.closest(".open-modal");
-            if(!card) return;
+        const listGroup = document.querySelector(".list-group");
+        if(listGroup) {
+            listGroup.addEventListener("click", e => {
+                const card = e.target.closest(".open-modal");
+                if(!card) return;
 
-            stopCameraStream();
-            document.getElementById('cameraContainer').style.display = 'none';
-
-            const d = card.dataset;
-            currentRideData = d;
-            
-            modal.querySelector("#modalIdDisplay").textContent = d.id;
-            modal.querySelector("#modalPickup").textContent = d.start;
-            modal.querySelector("#modalDropoff").textContent = d.end;
-            modal.querySelector("#modalADT").textContent = d.paxadt;
-            modal.querySelector("#modalCHD").textContent = d.paxchd;
-            modal.querySelector("#modalClient").textContent = d.client || 'Cliente';
-            modal.querySelector("#modalClientNumber").textContent = d.clientnumber;
-            
-            // WHATSAPP LÓGICA INTELIGENTE
-            const waContainer = document.getElementById('whatsappContainer');
-            waContainer.innerHTML = ''; 
-            waContainer.style.display = 'none';
-            
-            if (d.clientnumber) {
-                // Remove tudo que não é número
-                let cleanNum = d.clientnumber.replace(/[^0-9]/g, '');
-                // Assume que um numero valido tem pelo menos 7 digitos
-                if (cleanNum.length > 7) {
-                    waContainer.style.display = 'block';
-                    waContainer.innerHTML = `
-                        <a href="https://wa.me/${cleanNum}" target="_blank" class="btn-whatsapp">
-                            <i class="bi bi-whatsapp me-2"></i> Enviar Mensagem
-                        </a>`;
+                const d = card.dataset;
+                currentRideData = d;
+                
+                const modal = document.getElementById('detailsModal');
+                modal.querySelector("#modalIdDisplay").textContent = d.id;
+                modal.querySelector("#modalPickup").textContent = d.start;
+                modal.querySelector("#modalDropoff").textContent = d.end;
+                modal.querySelector("#modalADT").textContent = d.paxadt;
+                modal.querySelector("#modalCHD").textContent = d.paxchd;
+                modal.querySelector("#modalClient").textContent = d.client || 'Cliente';
+                modal.querySelector("#modalClientNumber").textContent = d.clientnumber;
+                
+                // WHATSAPP
+                const waContainer = document.getElementById('whatsappContainer');
+                waContainer.innerHTML = ''; 
+                waContainer.style.display = 'none';
+                
+                if (d.clientnumber) {
+                    let cleanNum = d.clientnumber.replace(/[^0-9]/g, '');
+                    if (cleanNum.length > 7) {
+                        waContainer.style.display = 'block';
+                        waContainer.innerHTML = `
+                            <a href="https://wa.me/${cleanNum}" target="_blank" class="btn-whatsapp">
+                                <i class="bi bi-whatsapp me-2"></i> Enviar Mensagem
+                            </a>`;
+                    }
                 }
-            }
-            
-            // PREÇO NO MODAL
-            const priceContainer = document.getElementById('priceAlertContainer');
-            const priceDisplay = document.getElementById('modalPriceDisplay');
-            let priceVal = parseFloat(d.price);
+                
+                // PREÇO
+                const priceContainer = document.getElementById('priceAlertContainer');
+                const priceDisplay = document.getElementById('modalPriceDisplay');
+                let priceVal = parseFloat(d.price);
 
-            if (d.price && priceVal > 0) {
-                priceDisplay.textContent = priceVal.toFixed(2) + " €";
-                priceContainer.style.display = "block";
-            } else {
-                priceContainer.style.display = "none";
-            }
+                if (d.price && priceVal > 0) {
+                    priceDisplay.textContent = priceVal.toFixed(2) + " €";
+                    priceContainer.style.display = "block";
+                } else {
+                    priceContainer.style.display = "none";
+                }
 
-            // PLACA
-            document.getElementById('airportClientName').textContent = d.client || "CLIENTE";
-            document.getElementById('airportFlight').textContent = d.flight || "";
+                // PLACA - NOME GIGANTE
+                let rawClientName = d.client || "CLIENTE";
+                document.getElementById('airportClientName').innerHTML = rawClientName.replace(/\s+/g, '<br>');
+                document.getElementById('airportFlight').textContent = d.flight || "";
 
-            // VOO
-            const fSection = modal.querySelector("#flightSection");
-            if(d.flight && d.flight !== 'N/A' && d.flight.trim() !== '') {
-                fSection.style.display = "flex";
-                modal.querySelector("#modalFlight").textContent = d.flight;
-                modal.querySelector("#trackFlightLink").href = "https://www.flightradar24.com/data/flights/" + d.flight.replace(/\s/g, '');
-            } else {
-                fSection.style.display = "none";
-            }
+                // VOO
+                const fSection = modal.querySelector("#flightSection");
+                if(d.flight && d.flight !== 'N/A' && d.flight.trim() !== '') {
+                    fSection.style.display = "flex";
+                    modal.querySelector("#modalFlight").textContent = d.flight;
+                    modal.querySelector("#trackFlightLink").href = "https://www.flightradar24.com/data/flights/" + d.flight.replace(/\s/g, '');
+                } else {
+                    fSection.style.display = "none";
+                }
 
-            modal.querySelector("#uploadNoShow").dataset.tripId = d.id;
-            modal.querySelector("#uploadVoucher").dataset.tripId = d.id;
+                modal.querySelector("#uploadNoShow").dataset.tripId = d.id;
+                modal.querySelector("#uploadVoucher").dataset.tripId = d.id;
 
-            // ESTADO
-            const status = localTripStatus[d.id];
-            updateButtonUI(status);
+                const status = localTripStatus[d.id];
+                updateButtonUI(status);
 
-            new bootstrap.Modal(modal).show();
-        });
+                new bootstrap.Modal(modal).show();
+            });
+        }
 
         // --- MODO PLACA ---
         document.getElementById('btnAirportMode').onclick = () => {
@@ -754,71 +906,173 @@ echo "<script>
             document.getElementById('airportOverlay').classList.toggle("rotate-mode");
         };
 
-        // --- CÂMERA ---
+        // --- CÂMERA FULL SCREEN ---
         const video = document.getElementById('cameraStream');
         const canvas = document.getElementById('photoCanvas');
-        const captureButton = document.getElementById('capturePhoto');
-        let stream = null; let currentMode = 'noshow';
+        const btnCapture = document.getElementById('btnCapture');
+        const btnRetake = document.getElementById('btnRetake');
+        const btnConfirmSend = document.getElementById('btnConfirmSend');
+        const btnRotateCamera = document.getElementById('btnRotateCamera');
+        const cameraOverlay = document.getElementById('cameraOverlay');
+        const cameraLoading = document.getElementById('cameraLoading');
 
-        function stopCameraStream() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
+        const stepCaptureControls = document.getElementById('stepCaptureControls');
+        const stepConfirmControls = document.getElementById('stepConfirmControls');
 
-        async function startCamera(mode) {
-            currentMode = mode;
-            document.getElementById('cameraInstruction').textContent = (mode === 'voucher') ? "Fotografar Voucher" : "Prova de No-Show";
-            if (stream) { stopCameraStream(); document.getElementById('cameraContainer').style.display = 'none'; return; }
-            canvas.style.display = 'none'; video.style.display = 'block'; 
-            document.getElementById('cameraContainer').style.display = 'block'; 
-            try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); video.srcObject = stream; } 
-            catch (err) { try { stream = await navigator.mediaDevices.getUserMedia({ video: true }); video.srcObject = stream; } catch (e) {} }
+        function stopCameraStream() { 
+            if (stream) { 
+                stream.getTracks().forEach(t => t.stop()); 
+                stream = null; 
+            } 
+            if (locationWatcher) {
+                navigator.geolocation.clearWatch(locationWatcher);
+                locationWatcher = null;
+            }
         }
 
-        document.getElementById('uploadNoShow').addEventListener('click', () => startCamera('noshow'));
-        document.getElementById('uploadVoucher').addEventListener('click', () => startCamera('voucher'));
+        function closeCameraOverlay() {
+            stopCameraStream();
+            cameraOverlay.style.display = 'none';
+        }
 
-        captureButton.addEventListener('click', () => {
-            if (!stream) return; 
-            captureButton.disabled = true; captureButton.innerHTML = 'A enviar...';
+        function updateCameraUI(state) {
+            const show = (el) => { el.classList.remove('d-none'); el.classList.add('d-flex'); };
+            const hide = (el) => { el.classList.remove('d-flex'); el.classList.add('d-none'); };
+
+            if (state === 'loading') {
+                cameraLoading.style.display = 'block';
+                video.style.display = 'none';
+                canvas.style.display = 'none';
+                hide(stepCaptureControls);
+                hide(stepConfirmControls);
+            } 
+            else if (state === 'capture') {
+                cameraLoading.style.display = 'none';
+                video.style.display = 'block';
+                canvas.style.display = 'none';
+                show(stepCaptureControls);
+                hide(stepConfirmControls);
+            }
+            else if (state === 'review') {
+                cameraLoading.style.display = 'none';
+                video.style.display = 'none';
+                canvas.style.display = 'block';
+                hide(stepCaptureControls);
+                show(stepConfirmControls);
+                btnConfirmSend.disabled = false;
+                btnConfirmSend.innerHTML = '<i class="bi bi-send-fill me-2"></i> Enviar';
+            }
+            else if (state === 'sending') {
+                btnConfirmSend.disabled = true;
+                btnConfirmSend.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> A enviar...';
+            }
+        }
+
+        async function startCamera() {
+            if (stream) stopCameraStream();
+            cameraOverlay.style.display = 'flex';
+            updateCameraUI('loading');
+
+            const constraints = { video: { facingMode: currentFacingMode } };
+
+            try { 
+                stream = await navigator.mediaDevices.getUserMedia(constraints); 
+                video.srcObject = stream; 
+                video.onloadedmetadata = () => { updateCameraUI('capture'); };
+            } catch (err) { 
+                try { 
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true }); 
+                    video.srcObject = stream; 
+                    video.onloadedmetadata = () => { updateCameraUI('capture'); };
+                } catch (e) {
+                    alert('Erro ao aceder à câmara: ' + e.message);
+                    closeCameraOverlay();
+                    return;
+                } 
+            }
+
+            currentLat = null; currentLng = null;
+            if ("geolocation" in navigator) {
+                locationWatcher = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        currentLat = pos.coords.latitude;
+                        currentLng = pos.coords.longitude;
+                    },
+                    (err) => console.log("GPS warmup error", err),
+                    { enableHighAccuracy: true, maximumAge: 0 }
+                );
+            }
+        }
+
+        function openCamera(mode) {
+            currentMode = mode;
+            document.getElementById('cameraInstruction').textContent = (mode === 'voucher') ? "Fotografar Voucher" : "Fotografar No-Show";
+            startCamera();
+        }
+
+        document.getElementById('uploadNoShow').addEventListener('click', () => openCamera('noshow'));
+        document.getElementById('uploadVoucher').addEventListener('click', () => openCamera('voucher'));
+
+        btnRotateCamera.addEventListener('click', () => {
+            currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+            startCamera();
+        });
+
+        btnCapture.addEventListener('click', () => {
+            if (!stream) return;
             const ctx = canvas.getContext('2d');
             canvas.width = video.videoWidth; canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
-            const imgData = canvas.toDataURL('image/jpeg');
-            stopCameraStream(); video.style.display='none'; 
+            updateCameraUI('review');
+        });
 
-            const tripId = currentRideData.id; 
+        btnRetake.addEventListener('click', () => { updateCameraUI('capture'); });
+
+        btnConfirmSend.addEventListener('click', () => {
+            updateCameraUI('sending');
+            const imgData = canvas.toDataURL('image/jpeg');
+            const payload = { trip_id: currentRideData.id, image_data: imgData, lat: currentLat, lng: currentLng };
             const endpoint = currentMode === 'voucher' ? 'upload_voucher.php' : 'upload_no_show.php';
 
             fetch(endpoint, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ trip_id: tripId, image_data: imgData })
+                body: JSON.stringify(payload)
             })
             .then(r => r.json())
             .then(d => {
-                alert(d.message); 
-                document.getElementById('cameraContainer').style.display='none';
-                
-                // NO-SHOW LOGIC: Finaliza Viagem Automaticamente
-                if (currentMode === 'noshow' && d.success) {
-                    stopLiveTracking(); 
-                    updateStatusBackend(tripId, 4); // Força status 4 (Concluído)
+                if (d.success) {
+                    alert(d.message); 
+                    closeCameraOverlay();
+                    if (currentMode === 'noshow') {
+                        stopLiveTracking(); 
+                        updateStatusBackend(currentRideData.id, 4); 
+                    }
+                } else {
+                    alert('Erro do servidor: ' + d.message);
+                    updateCameraUI('review');
+                    btnConfirmSend.innerHTML = '<i class="bi bi-send-fill me-2"></i> Tentar de novo';
                 }
             })
-            .catch(e => alert('Erro envio.'))
-            .finally(() => { captureButton.disabled = false; captureButton.textContent = '📸 Capturar'; });
+            .catch(e => {
+                alert('Erro de conexão.');
+                console.error(e);
+                updateCameraUI('review');
+                btnConfirmSend.innerHTML = '<i class="bi bi-send-fill me-2"></i> Tentar de novo';
+            });
         });
 
-        // Modal Foto
         const photoModal = document.getElementById('photoModal');
-        photoModal.addEventListener('show.bs.modal', function () {
-            const currentImg = document.querySelector('img.user-image').src;
-            document.getElementById('currentProfilePhoto').src = currentImg;
-            document.getElementById('profilePhotoInput').value = '';
-        });
-        
-        document.getElementById('profilePhotoInput').addEventListener('change', function(e) {
-            const [file] = e.target.files;
-            if (file) { document.getElementById('currentProfilePhoto').src = URL.createObjectURL(file); }
-        });
-
+        if(photoModal) {
+            photoModal.addEventListener('show.bs.modal', function () {
+                const imgEl = document.querySelector('img.user-image');
+                if(imgEl) document.getElementById('currentProfilePhoto').src = imgEl.src;
+                document.getElementById('profilePhotoInput').value = '';
+            });
+            document.getElementById('profilePhotoInput').addEventListener('change', function(e) {
+                const [file] = e.target.files;
+                if (file) document.getElementById('currentProfilePhoto').src = URL.createObjectURL(file); 
+            });
+        }
     </script>
   </body>
 </html>

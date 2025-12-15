@@ -8,73 +8,113 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['role']) || $_SESSION['role
 }
 
 require_once __DIR__ . '/../../../auth/dbconfig.php';
+
+// Lógica da Foto de Perfil
+$defaultPhoto = "../assets/img/user2-160x160.jpg"; 
+$userPhoto = $defaultPhoto;
+if (isset($_SESSION['profile_photo_path']) && !empty($_SESSION['profile_photo_path'])) {
+    $userPhoto = "../../../" . $_SESSION['profile_photo_path'];
+}
 ?>
 
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt" data-bs-theme="light">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Live Map | SyncRide</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5.0.12/index.css" crossorigin="anonymous" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/styles/overlayscrollbars.min.css" crossorigin="anonymous" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" crossorigin="anonymous" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/styles/overlayscrollbars.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta1/dist/css/adminlte.min.css" />
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
 
     <style>
-        :root { --header-height-base: 56px; --bottom-nav-height: 70px; --sheet-width: 380px; }
-
-        /* --- HEADER & LAYOUT --- */
-        .app-header { position: fixed; top: 0; left: 0; right: 0; z-index: 1030; height: var(--header-height-base); }
-        .app-main { padding: 0 !important; margin: 0 !important; height: 100vh; position: relative; overflow: hidden; }
-        
-        @media (max-width: 991.98px) {
-            .app-header {
-                padding-top: env(safe-area-inset-top);
-                height: calc(var(--header-height-base) + env(safe-area-inset-top));
-                background-color: #ffffff !important; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            }
-            .app-sidebar, .navbar-toggler, .bi-list { display: none !important; }
-            .app-main {
-                margin-top: calc(var(--header-height-base) + env(safe-area-inset-top)) !important;
-                padding-bottom: calc(var(--bottom-nav-height) + 20px + env(safe-area-inset-bottom)) !important;
-                height: calc(100vh - (var(--bottom-nav-height) + env(safe-area-inset-bottom)));
-            }
-            .bottom-navbar { display: flex !important; }
+        /* --- DESIGN SYSTEM MODERNO (SaaS) --- */
+        :root {
+            --font-primary: 'Inter', sans-serif;
+            --font-display: 'Poppins', sans-serif;
+            
+            --bg-body: #f3f4f6;
+            --bg-card: #ffffff;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --primary-accent: #4f46e5;
+            --border-color: #e5e7eb;
+            
+            --header-height: 70px;
+            --bottom-nav-height: 70px;
+            --sheet-width: 380px;
         }
 
-        @media (min-width: 992px) {
-            .bottom-navbar { display: none !important; }
-            .app-main { 
-                margin-top: var(--header-height-base) !important; 
-                height: calc(100vh - var(--header-height-base));
+        [data-bs-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f9fafb;
+            --text-muted: #94a3b8;
+            --primary-accent: #6366f1;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            overflow: hidden; /* Importante para o mapa full screen */
+        }
+
+        /* --- LAYOUT FIXES FOR MAP --- */
+        .app-wrapper { height: 100vh; display: flex; flex-direction: column; }
+        
+        .app-header {
+            background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color); height: var(--header-height);
+            position: fixed; top: 0; width: 100%; z-index: 1040;
+        }
+        [data-bs-theme="dark"] .app-header { background: rgba(30, 41, 59, 0.85); }
+
+        .app-sidebar {
+            background-color: var(--bg-card); border-right: 1px solid var(--border-color);
+            position: fixed; height: 100vh; z-index: 1039; top: 0; padding-top: var(--header-height);
+        }
+        
+        .app-main {
+            flex: 1; margin-top: var(--header-height); 
+            height: calc(100vh - var(--header-height));
+            position: relative; padding: 0 !important;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 991.98px) {
+            .app-main {
+                /* Desconta altura do header e do bottom nav */
+                height: calc(100vh - var(--header-height) - var(--bottom-nav-height));
+                padding-bottom: env(safe-area-inset-bottom);
             }
         }
 
         /* --- MAPA --- */
         #adminMap { width: 100%; height: 100%; z-index: 1; background: #0f1724; }
+        
+        /* Marker Animation */
+        .leaflet-marker-icon, .leaflet-marker-shadow { transition: transform 3s linear; }
+        .leaflet-routing-container { display: none !important; }
 
-        /* MOVIMENTO SUAVE (CSS) */
-        .leaflet-marker-icon, .leaflet-marker-shadow {
-            transition: transform 3s linear; 
-        }
-
-        /* --- WIDGET RADAR (TOPO) --- */
+        /* --- WIDGET RADAR (Topo) --- */
         .status-widget {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 1035;
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(8px);
-            padding: 8px 18px;
-            border-radius: 50px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            display: flex; align-items: center; gap: 12px;
-            font-size: 0.9rem; font-weight: 600; color: #1f2937;
-            border: 1px solid rgba(255,255,255,0.4);
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1030;
+            background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px);
+            padding: 8px 20px; border-radius: 50px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            display: flex; align-items: center; gap: 10px;
+            font-size: 0.9rem; font-weight: 600; color: #111827;
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        [data-bs-theme="dark"] .status-widget {
+            background: rgba(30, 41, 59, 0.8); color: #f9fafb; border-color: rgba(255,255,255,0.1);
         }
         .radar-dot {
             width: 10px; height: 10px; background: #10b981; border-radius: 50%;
@@ -87,146 +127,218 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
-        /* --- DRIVER SHEET (COMPACTA E AJUSTADA) --- */
+        /* --- DRIVER SHEET (Bottom Overlay) --- */
         .driver-sheet {
-            position: absolute; left: 50%; 
-            /* Correção para Mobile: Fica acima da barra de navegação */
-            bottom: calc(var(--bottom-nav-height) + 20px); 
-            transform: translateX(-50%) translateY(120%); /* Escondido por defeito */
-            z-index: 1035;
-            width: 90%; max-width: var(--sheet-width);
-            background: #fff; border-radius: 20px;
-            padding: 16px; 
-            padding-bottom: 20px; /* Espaço extra em baixo */
-            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            position: absolute; left: 50%; bottom: 30px;
+            transform: translateX(-50%) translateY(150%); /* Hidden */
+            z-index: 1035; width: 90%; max-width: var(--sheet-width);
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: 24px; padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        
-        /* Ajuste para Desktop (encosta mais ao fundo pois não tem nav bar) */
-        @media (min-width: 992px) {
-            .driver-sheet { bottom: 25px; }
-        }
-
         .driver-sheet.active { transform: translateX(-50%) translateY(0); }
 
-        .sheet-top { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+        .sheet-top { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
         .sheet-avatar { 
-            width: 46px; height: 46px; border-radius: 50%; background: #f3f4f6; 
-            display: flex; align-items: center; justify-content: center; font-size: 22px; color: #6b7280; flex-shrink: 0;
+            width: 50px; height: 50px; border-radius: 50%; background: var(--bg-body); 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 1.5rem; color: var(--text-muted); border: 1px solid var(--border-color);
         }
-        .sheet-info h4 { margin: 0; font-size: 1rem; font-weight: 700; color: #111; }
-        .sheet-info p { margin: 0; font-size: 0.8rem; color: #666; }
+        .sheet-info h4 { margin: 0; font-family: var(--font-display); font-weight: 700; color: var(--text-main); font-size: 1.1rem; }
+        .sheet-info p { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
         
-        .sheet-stats { display: flex; gap: 10px; margin-bottom: 14px; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
         .stat-box { 
-            flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; 
-            padding: 10px; text-align: center; 
+            background: var(--bg-body); border-radius: 16px; padding: 12px; text-align: center; border: 1px solid var(--border-color);
         }
-        .stat-label { display: block; font-size: 0.65rem; text-transform: uppercase; color: #94a3b8; font-weight: 700; margin-bottom: 2px;}
-        .stat-value { font-size: 0.95rem; font-weight: 800; color: #0f1724; }
+        .stat-label { font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px; }
+        .stat-value { font-size: 1.1rem; font-weight: 800; color: var(--text-main); font-family: var(--font-display); }
 
         .dest-bar { 
-            background: #eff6ff; color: #1e40af; padding: 12px; border-radius: 12px; 
-            display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 600; margin-bottom: 12px;
+            background: rgba(79, 70, 229, 0.1); color: var(--primary-accent); 
+            padding: 12px 16px; border-radius: 12px; display: flex; align-items: center; gap: 12px; 
+            font-size: 0.9rem; font-weight: 600; margin-bottom: 15px;
         }
-        .dest-bar i { font-size: 1.1rem; }
         .dest-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         .btn-close-sheet {
-            width: 100%; background: #0f1724; color: white; border: none; padding: 12px;
-            border-radius: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
-            transition: background 0.2s;
+            width: 100%; background: var(--text-main); color: var(--bg-card); border: none; 
+            padding: 14px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;
         }
-        .btn-close-sheet:hover { background: #1f2937; }
+        .btn-close-sheet:hover { opacity: 0.9; }
+        .last-update { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-top: 10px; display: block; }
 
-        .last-update-text {
-            display: block; width: 100%; text-align: center;
-            font-size: 0.7rem; color: #9ca3af; margin-top: 10px; font-weight: 500;
+        /* --- SIDEBAR & MENU STYLES (SHARED) --- */
+        .sidebar-brand { height: 70px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border-color); }
+        .brand-link { text-decoration: none; }
+        .brand-image { max-height: 45px; width: auto; transition: transform 0.3s; }
+        .brand-image:hover { transform: scale(1.05); }
+        
+        .sidebar-menu .nav-link { color: var(--text-muted); border-radius: 10px; margin: 4px 12px; padding: 10px 16px; font-weight: 500; transition: all 0.2s; }
+        .sidebar-menu .nav-link:hover, .sidebar-menu .nav-link.active { background-color: var(--primary-accent); color: #fff; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
+        .sidebar-menu .nav-icon { margin-right: 12px; font-size: 1.1rem; }
+
+        /* --- BOTTOM NAV (CORRIGIDA) --- */
+        .bottom-navbar {
+            background-color: var(--bg-card); border-top: 1px solid var(--border-color);
+            z-index: 1050; padding-bottom: env(safe-area-inset-bottom);
+            position: fixed; bottom: 0; left: 0; width: 100%; 
+            height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+            display: none; justify-content: space-around; align-items: center;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.05);
         }
+        @media (max-width: 991.98px) { .bottom-navbar { display: flex; } }
+        
+        .nav-item-bottom {
+            color: var(--text-muted); font-size: 0.7rem; font-weight: 600; text-decoration: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; width: 100%; transition: color 0.2s;
+        }
+        .nav-item-bottom.active { color: var(--primary-accent); }
+        .nav-item-bottom i { font-size: 1.4rem; margin-bottom: 4px; }
 
-        /* ÍCONES DO MAPA */
+        /* --- MOBILE MENU GRID --- */
+        .quick-action-btn {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 15px; border-radius: 16px; background-color: var(--bg-body);
+            color: var(--text-main); text-decoration: none; border: 1px solid var(--border-color);
+            transition: transform 0.1s; height: 100%;
+        }
+        .quick-action-btn:active { transform: scale(0.96); }
+        .quick-action-btn i { font-size: 1.8rem; margin-bottom: 8px; }
+        .quick-action-btn span { font-size: 0.8rem; font-weight: 600; }
+        
+        /* Map Icons */
         .car-marker-container { pointer-events: auto; }
         .car-body svg { width: 34px; height: auto; display: block; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4)); transition: transform 0.5s linear; }
-
-        /* Esconder painel de texto de rota, manter a linha no mapa */
-        .leaflet-routing-container { display: none !important; }
-        
-        /* MOBILE BOTTOM NAV */
-        .bottom-navbar {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
-            background: #ffffff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-            display: none; justify-content: space-around; align-items: flex-start;
-            padding-top: 10px; padding-bottom: env(safe-area-inset-bottom); z-index: 1040;
-            border-top-left-radius: 20px; border-top-right-radius: 20px;
-        }
-        .nav-item-bottom { display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #adb5bd; font-size: 10px; font-weight: 500; transition: all 0.3s ease; width: 20%; }
-        .nav-item-bottom i { font-size: 22px; margin-bottom: 4px; transition: transform 0.2s; }
-        .nav-item-bottom.active { color: #0d6efd; }
-        .nav-item-bottom.active i { transform: translateY(-3px); }
     </style>
 </head>
-<body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
 
+<body class="layout-fixed sidebar-expand-lg">
     <div class="app-wrapper">
       
-      <nav class="app-header navbar navbar-expand bg-body">
+      <nav class="app-header navbar navbar-expand">
         <div class="container-fluid">
           <ul class="navbar-nav">
-            <li class="nav-item"><a class="nav-link" data-lte-toggle="sidebar" href="#"><i class="bi bi-list" style="font-size: 1.5rem;"></i></a></li>
-            <li class="nav-item d-lg-none ms-2"><span class="fw-bold fs-5">Live Map</span></li>
-            <li class="nav-item d-none d-lg-block"><a href="#" class="nav-link">Home</a></li>
-          </ul>
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item"><a class="nav-link" href="#" data-lte-toggle="fullscreen"><i data-lte-icon="maximize" class="bi bi-arrows-fullscreen"></i><i data-lte-icon="minimize" class="bi bi-fullscreen-exit" style="display: none"></i></a></li>
-            <li class="nav-item dropdown user-menu">
-              <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
-                <img src="https://syncride.webminds.pt/Includes/dist/assets/img/user2-160x160.jpg" class="user-image rounded-circle shadow" alt="User" />
+            <li class="nav-item">
+              <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button">
+                <i class="bi bi-list text-muted fs-4"></i>
               </a>
-              <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
-                <li class="user-header text-bg-primary">
-                  <img src="https://syncride.webminds.pt/Includes/dist/assets/img/user2-160x160.jpg" class="rounded-circle shadow" alt="User" />
-                  <p><?php echo $_SESSION['name'] ?? 'Admin'; ?> - Admin</p>
+            </li>
+            <li class="nav-item d-lg-none ms-2 d-flex align-items-center">
+                <img src="../../../assets/images/icons/SyncRide.png" id="header-logo" alt="SyncRide" style="height: 30px;">
+            </li>
+          </ul>
+          <ul class="navbar-nav ms-auto align-items-center">
+            
+            <li class="nav-item me-3">
+                <button class="btn btn-link text-muted p-0 border-0" id="theme-toggle">
+                    <i class="bi bi-moon-stars-fill fs-5" id="theme-icon"></i>
+                </button>
+            </li>
+
+            <li class="nav-item dropdown user-menu">
+              <a href="#" class="nav-link dropdown-toggle d-flex align-items-center gap-2" data-bs-toggle="dropdown">
+                <img src="<?php echo $userPhoto; ?>" class="user-image rounded-circle shadow-sm" alt="User Image" style="width: 38px; height: 38px; object-fit: cover;">
+                <div class="d-none d-md-block text-start lh-1">
+                    <span class="d-block fw-semibold text-main small"><?php echo $_SESSION['name']; ?></span>
+                    <span class="text-muted" style="font-size: 0.7rem;">Administrador</span>
+                </div>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end border-0 shadow-lg rounded-4 overflow-hidden mt-2">
+                <li class="user-header bg-primary text-white p-4 text-center">
+                  <img src="<?php echo $userPhoto; ?>" class="rounded-circle shadow mb-2 border border-2 border-white" alt="User Image" style="width: 80px; height: 80px; object-fit: cover;">
+                  <p class="mb-0 fw-bold"><?php echo $_SESSION['name']; ?></p>
+                  <small class="opacity-75">Gestor de Frota</small>
                 </li>
-                <li class="user-footer"><a href="logout.php" class="btn btn-default btn-flat float-end">Sair</a></li>
+                <li class="user-footer p-3 bg-card d-flex justify-content-between">
+                  <a href="#" class="btn btn-light btn-sm rounded-pill px-4">Perfil</a>
+                  <a href="logout.php" class="btn btn-danger btn-sm rounded-pill px-4">Sair</a>
+                </li>
               </ul>
             </li>
           </ul>
         </div>
       </nav>
 
-      <aside class="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
-        <div class="sidebar-brand"><a href="./admin.php" class="brand-link"><span class="brand-text fw-light">SyncRide</span></a></div>
-        <div class="sidebar-wrapper">
-          <nav class="mt-2">
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">
+          <a href="./admin.php" class="brand-link">
+            <img src="../../../assets/images/icons/SyncRide.png" id="sidebar-logo" alt="SyncRide Logo" class="brand-image" style="opacity: 1;">
+          </a>
+        </div>
+        
+        <div class="sidebar-wrapper mt-3">
+          <nav>
             <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu" data-accordion="false">
-              <li class="nav-item"><a href="admin.php" class="nav-link"><i class="nav-icon bi bi-speedometer"></i><p>Dashboard</p></a></li>
-              <li class="nav-item"><a href="live_map.php" class="nav-link active"><i class="nav-icon bi bi-map-fill"></i><p>Live Map</p></a></li>
-              <li class="nav-item"><a href="ManageRides.php" class="nav-link"><i class="nav-icon bi bi-box-seam-fill"></i><p>Viagens</p></a></li>
-              <li class="nav-item"><a href="manageUsers.php" class="nav-link"><i class="nav-icon bi bi-people-fill"></i><p>Funcionários</p></a></li>
-              <li class="nav-item"><a href="admin_driver_stats.php" class="nav-link"><i class="nav-icon bi bi-graph-up"></i><p>Estatísticas</p></a></li>
-              <li class="nav-item"><a href="ManageNoShows.php" class="nav-link"><i class="nav-icon bi bi-camera-fill"></i><p>No Shows</p></a></li>
-              <li class="nav-item"><a href="manageStorage.php" class="nav-link"><i class="nav-icon bi bi-archive-fill"></i><p>Armazenamento</p></a></li>
+              <li class="nav-header text-muted fw-bold small text-uppercase px-3 mb-2">Visão Geral</li>
+              
+              <li class="nav-item">
+                  <a href="admin.php" class="nav-link">
+                      <i class="nav-icon bi bi-grid-fill"></i>
+                      <p>Dashboard</p>
+                  </a>
+              </li>
+              <li class="nav-item">
+                  <a href="live_map.php" class="nav-link active">
+                      <i class="nav-icon bi bi-map-fill"></i>
+                      <p>Live Map</p>
+                  </a>
+              </li>
+              <li class="nav-item">
+                  <a href="ManageRides.php" class="nav-link">
+                      <i class="nav-icon bi bi-car-front-fill"></i>
+                      <p>Viagens</p>
+                  </a>
+              </li>
+              
+              <li class="nav-header text-muted fw-bold small text-uppercase px-3 mb-2 mt-4">Gestão</li>
+              
+              <li class="nav-item"><a href="manageUsers.php" class="nav-link"><i class="nav-icon bi bi-people-fill"></i><p>Equipa</p></a></li>
+              <li class="nav-item"><a href="manageFleet.php" class="nav-link"><i class="nav-icon bi bi-truck-front-fill"></i><p>Frota</p></a></li>
+              <li class="nav-item"><a href="financial.php" class="nav-link"><i class="nav-icon bi bi-cash-coin"></i><p>Financeiro</p></a></li>
+              <li class="nav-item"><a href="admin_driver_stats.php" class="nav-link"><i class="nav-icon bi bi-bar-chart-fill"></i><p>Estatísticas</p></a></li>
+              <li class="nav-item"><a href="ManageNoShows.php" class="nav-link"><i class="nav-icon bi bi-exclamation-triangle-fill"></i><p>No Shows</p></a></li>
+              <li class="nav-item"><a href="manageStorage.php" class="nav-link"><i class="nav-icon bi bi-hdd-network-fill"></i><p>Armazenamento</p></a></li>
             </ul>
           </nav>
         </div>
       </aside>
 
       <div class="bottom-navbar">
-        <a href="admin.php" class="nav-item-bottom"><i class="bi bi-house-door-fill"></i><span>Home</span></a>
-        <a href="live_map.php" class="nav-item-bottom active"><i class="bi bi-map-fill"></i><span>Map</span></a>
-        <a href="ManageRides.php" class="nav-item-bottom"><i class="bi bi-car-front-fill"></i><span>Viagens</span></a>
-        <a href="manageUsers.php" class="nav-item-bottom"><i class="bi bi-people-fill"></i><span>Staff</span></a>
-        <a href="#" class="nav-item-bottom" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu"><i class="bi bi-grid-fill"></i><span>Mais</span></a>
+        <a href="admin.php" class="nav-item-bottom">
+            <i class="bi bi-grid-fill"></i><span>Home</span>
+        </a>
+        <a href="ManageRides.php" class="nav-item-bottom">
+            <i class="bi bi-car-front-fill"></i><span>Viagens</span>
+        </a>
+        <a href="live_map.php" class="nav-item-bottom active">
+            <i class="bi bi-map-fill"></i><span>LiveMap</span>
+        </a>
+        <a href="#" class="nav-item-bottom" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu">
+            <i class="bi bi-three-dots"></i><span>Menu</span>
+        </a>
       </div>
 
-      <div class="offcanvas offcanvas-bottom" tabindex="-1" id="mobileMenu" style="height: 50vh; border-top-left-radius: 20px; border-top-right-radius: 20px;">
-        <div class="offcanvas-header"><h5 class="offcanvas-title fw-bold">Menu</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
-        <div class="offcanvas-body">
-            <div class="row g-3 text-center">
-                <div class="col-4"><a href="ManageNoShows.php" class="d-block p-3 rounded bg-light text-dark text-decoration-none"><i class="bi bi-camera-fill fs-1 text-danger"></i><div class="small mt-2">No Shows</div></a></div>
-                <div class="col-4"><a href="manageStorage.php" class="d-block p-3 rounded bg-light text-dark text-decoration-none"><i class="bi bi-hdd-fill fs-1 text-warning"></i><div class="small mt-2">Storage</div></a></div>
-                <div class="col-4"><a href="logout.php" class="d-block p-3 rounded bg-light text-dark text-decoration-none"><i class="bi bi-box-arrow-right fs-1 text-secondary"></i><div class="small mt-2">Sair</div></a></div>
+      <div class="offcanvas offcanvas-bottom rounded-top-4" tabindex="-1" id="mobileMenu" style="height: auto; min-height: 40vh;">
+        <div class="offcanvas-header pb-0">
+          <h5 class="offcanvas-title fw-bold text-main">Menu Rápido</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body pt-3">
+            <div class="row g-3">
+                <div class="col-4 text-center"><a href="financial.php" class="quick-action-btn shadow-sm"><i class="bi bi-cash-coin text-success"></i><span>Finanças</span></a></div>
+                <div class="col-4 text-center"><a href="manageFleet.php" class="quick-action-btn shadow-sm"><i class="bi bi-truck-front-fill text-primary"></i><span>Frota</span></a></div>
+                <div class="col-4 text-center"><a href="manageUsers.php" class="quick-action-btn shadow-sm"><i class="bi bi-people-fill text-info"></i><span>Equipa</span></a></div>
+                <div class="col-4 text-center"><a href="admin_driver_stats.php" class="quick-action-btn shadow-sm"><i class="bi bi-bar-chart-fill text-warning"></i><span>Stats</span></a></div>
+                <div class="col-4 text-center"><a href="ManageNoShows.php" class="quick-action-btn shadow-sm"><i class="bi bi-camera-fill text-danger"></i><span>NoShow</span></a></div>
+                <div class="col-4 text-center"><a href="manageStorage.php" class="quick-action-btn shadow-sm"><i class="bi bi-hdd-fill text-secondary"></i><span>Storage</span></a></div>
+                <div class="col-12 mt-3">
+                    <a href="logout.php" class="d-block p-3 rounded-4 bg-light text-decoration-none shadow-sm text-center text-danger fw-bold">
+                        <i class="bi bi-box-arrow-right me-2"></i> Sair
+                    </a>
+                </div>
             </div>
         </div>
       </div>
@@ -235,7 +347,7 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
         
         <div class="status-widget">
             <div class="radar-dot"></div>
-            <div><span id="activeCount">0</span> <span style="font-weight:400; color:#555;">viagens ativas</span></div>
+            <div><span id="activeCount">0</span> <span style="font-weight:400; opacity: 0.8;">viagens ativas</span></div>
         </div>
 
         <div id="adminMap"></div>
@@ -249,24 +361,24 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
                 </div>
             </div>
             
-            <div class="sheet-stats">
+            <div class="stat-grid">
                 <div class="stat-box">
                     <span class="stat-label">Velocidade</span>
                     <span class="stat-value" id="sSpeed">0 km/h</span>
                 </div>
                 <div class="stat-box">
                     <span class="stat-label">Cliente</span>
-                    <span class="stat-value" id="sClient">--</span>
+                    <span class="stat-value" id="sClient" style="font-size: 0.9rem; padding-top: 2px;">--</span>
                 </div>
             </div>
 
             <div class="dest-bar">
                 <i class="bi bi-geo-alt-fill"></i>
-                <div class="dest-text" id="sDest">Sem destino</div>
+                <div class="dest-text" id="sDest">Sem destino definido</div>
             </div>
 
             <button class="btn-close-sheet" onclick="closeSheet()">Fechar</button>
-            <span class="last-update-text" id="sUpdate">Atualizado: --:--:--</span>
+            <span class="last-update" id="sUpdate">Atualizado: --:--:--</span>
         </div>
 
       </main>
@@ -280,12 +392,45 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
     <script>
-    // Config inicial do Mapa
+    // --- Dark Mode & Logo Logic ---
+    const themeToggle = document.getElementById('theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+    const htmlElement = document.documentElement;
+    const headerLogo = document.getElementById('header-logo');
+    const sidebarLogo = document.getElementById('sidebar-logo');
+    const logoDark = "../../../assets/images/icons/SyncRide.png"; 
+    const logoLight = "../../../assets/images/icons/Syncridewhite.png";
+
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    htmlElement.setAttribute('data-bs-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+    updateLogo(savedTheme);
+
+    themeToggle.addEventListener('click', () => {
+        const newTheme = htmlElement.getAttribute('data-bs-theme') === 'light' ? 'dark' : 'light';
+        htmlElement.setAttribute('data-bs-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+        updateThemeIcon(newTheme);
+        updateLogo(newTheme);
+    });
+
+    function updateThemeIcon(theme) {
+        themeIcon.className = theme === 'light' ? 'bi bi-moon-stars-fill fs-5' : 'bi bi-sun-fill fs-5';
+    }
+
+    function updateLogo(theme) {
+        const newSrc = theme === 'dark' ? logoLight : logoDark;
+        if(headerLogo) headerLogo.src = newSrc;
+        if(sidebarLogo) sidebarLogo.src = newSrc;
+    }
+
+    // --- MAP LOGIC ---
     var map = L.map('adminMap', { zoomControl: false, attributionControl: false }).setView([41.15, -8.62], 12);
+    // Dark Tiles by default for better contrast with overlays
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
     L.control.zoom({position: 'bottomright'}).addTo(map);
 
-    // SVG Carro
+    // SVG Car Icon
     const carSvg = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 100">
       <path d="M5,15 Q25,-5 45,15 L48,85 Q48,98 25,98 Q2,98 2,85 Z" fill="#d1d5db" stroke="#999" stroke-width="1"/>
@@ -327,7 +472,6 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
           allLatLngs.push([lat, lng]);
 
           if (!drivers[id]) {
-            // NOVO MOTORISTA
             var icon = L.divIcon({ className: 'car-marker-container', html: `<div class="car-body">${carSvg}</div>`, iconSize: [30,60], iconAnchor: [15,30] });
             var m = L.marker([lat, lng], { icon: icon }).addTo(map);
             rotateMarker(m, d.heading);
@@ -338,7 +482,6 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
             if (d.serviceTargetPoint && d.serviceTargetPoint !== 'N/A') ensureRoute(id, d);
 
           } else {
-            // ATUALIZAR
             var entry = drivers[id];
             entry.data = d;
             entry.marker.setLatLng([lat, lng]);
@@ -350,7 +493,7 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
 
         cleanupDrivers(activeIds);
 
-        // AUTO ZOOM (só se o painel estiver fechado, para não incomodar)
+        // Auto zoom if sheet is closed
         if (allLatLngs.length > 0 && !isSheetOpen()) {
              var bounds = L.latLngBounds(allLatLngs);
              map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16, animate: true, duration: 1.5 });
@@ -404,7 +547,6 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
         });
     }
 
-    // --- SHEET LOGIC ATUALIZADA ---
     function openSheetForDriver(id) {
         var entry = drivers[id];
         if(!entry) return;
@@ -432,10 +574,8 @@ require_once __DIR__ . '/../../../auth/dbconfig.php';
             document.getElementById('sUpdate').innerText = "A aguardar atualização...";
             return;
         }
-        // Converte string SQL (YYYY-MM-DD HH:MM:SS) para JS Date
-        // O replace é para garantir compatibilidade com Safari (substitui - por /)
         var date = new Date(dateStr.replace(/-/g, "/"));
-        var time = date.toLocaleTimeString('pt-PT'); // Formato HH:MM:SS
+        var time = date.toLocaleTimeString('pt-PT');
         document.getElementById('sUpdate').innerText = "Atualizado às: " + time;
     }
 

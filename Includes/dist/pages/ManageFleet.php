@@ -1,237 +1,314 @@
 <?php
 session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 1) { header("Location: ../../../index.php"); exit(); }
+
+// 1. VERIFICAÇÃO DE ADMIN
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['role']) || $_SESSION['role'] !== 1) {
+    header("refresh: 1; url=../../../index.php");
+    exit();
+}
+
 require __DIR__ . '/../../../auth/dbconfig.php';
 
-// --- NOVO: Buscar Veículos e Condutores ---
-$stmt = $pdo->query("
-    SELECT 
-        v.*, 
-        u.name AS assigned_driver_name 
-    FROM Vehicles v
-    LEFT JOIN Users u ON u.assigned_vehicle_id = v.id 
-    ORDER BY v.status DESC, v.brand ASC
-");
-$vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// 2. Lógica da Foto de Perfil
+$defaultPhoto = "../assets/img/user2-160x160.jpg";
+$userPhoto = $defaultPhoto;
+if (isset($_SESSION['profile_photo_path']) && !empty($_SESSION['profile_photo_path'])) {
+    $userPhoto = "../../../" . $_SESSION['profile_photo_path'];
+}
 
-$stmtDrivers = $pdo->query("SELECT id, name FROM Users WHERE role = 2 ORDER BY name ASC");
-$drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
-// ------------------------------------------
+// 3. BUSCAR DADOS
+try {
+    // Buscar Veículos (Assumindo que Users.assigned_vehicle_id liga ao ID do carro)
+    $stmt = $pdo->query("
+        SELECT 
+            v.*, 
+            u.name AS assigned_driver_name,
+            u.id AS assigned_driver_user_id
+        FROM Vehicles v
+        LEFT JOIN Users u ON u.assigned_vehicle_id = v.id 
+        ORDER BY v.status DESC, v.brand ASC
+    ");
+    $vehicles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Cálculos de Alertas (Simplificado)
+    // Buscar Condutores para o Select
+    $stmtDrivers = $pdo->query("SELECT id, name FROM Users WHERE role = 2 ORDER BY name ASC");
+    $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $vehicles = []; $drivers = [];
+}
+
+// 4. CÁLCULOS DE ALERTAS
 $alerts = 0;
 $totalVehicles = count($vehicles);
 $activeVehicles = 0;
 
 foreach($vehicles as $v) {
     if($v['status'] == 1) $activeVehicles++;
-    $today = new DateTime();
-    $insp = new DateTime($v['inspection_date']);
-    $insu = new DateTime($v['insurance_date']);
     
-    // Alerta se faltarem menos de 30 dias
-    if($today->diff($insp)->format("%r%a") < 30 || $today->diff($insu)->format("%r%a") < 30) {
-        $alerts++;
+    // Validar datas para evitar erros
+    if (!empty($v['inspection_date']) && !empty($v['insurance_date'])) {
+        $today = new DateTime();
+        $insp = new DateTime($v['inspection_date']);
+        $insu = new DateTime($v['insurance_date']);
+        
+        // Alerta se faltarem menos de 30 dias
+        if($today->diff($insp)->format("%r%a") < 30 || $today->diff($insu)->format("%r%a") < 30) {
+            $alerts++;
+        }
     }
 }
 ?>
-<!DOCTYPE html>
-<html lang="pt">
-  <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Gerir Frota | SyncRide</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5.0.12/index.css" />
+<!DOCTYPE html>
+<html lang="pt" data-bs-theme="light">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Frota | SyncRide</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/styles/overlayscrollbars.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="../../dist/css/adminlte.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta1/dist/css/adminlte.min.css" />
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet"/>
 
     <style>
-        :root { --header-height-base: 56px; --bottom-nav-height: 65px; }
+        /* --- DESIGN SYSTEM MODERNO (SaaS) - UNIFICADO --- */
+        :root {
+            --font-primary: 'Inter', sans-serif;
+            --font-display: 'Poppins', sans-serif;
+            
+            --bg-body: #f3f4f6;
+            --bg-card: #ffffff;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --primary-accent: #4f46e5;
+            --primary-hover: #4338ca;
+            --border-color: #e5e7eb;
+            --table-head-bg: #f9fafb;
+            
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --radius-md: 16px;
+            --radius-sm: 10px;
+        }
 
-        /* --- 1. CABEÇALHO HÍBRIDO (Igual ao Admin) --- */
-        .app-header { position: fixed; top: 0; left: 0; right: 0; z-index: 1030; height: var(--header-height-base); }
+        [data-bs-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f9fafb;
+            --text-muted: #94a3b8;
+            --primary-accent: #6366f1;
+            --primary-hover: #818cf8;
+            --border-color: #334155;
+            --table-head-bg: #1e293b;
+            --shadow-sm: none;
+            --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* --- NAVBAR & SIDEBAR --- */
+        .app-header {
+            background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color); height: 70px;
+        }
+        [data-bs-theme="dark"] .app-header { background: rgba(30, 41, 59, 0.85); }
+
+        .app-sidebar {
+            background-color: var(--bg-card); border-right: 1px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
+        }
+        .sidebar-brand {
+            height: 70px; display: flex; align-items: center; justify-content: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .brand-link { text-decoration: none; }
+        .brand-image { max-height: 45px; width: auto; transition: transform 0.3s; }
+        .brand-image:hover { transform: scale(1.05); }
         
-        @media (max-width: 991.98px) {
-            .app-header {
-                padding-top: env(safe-area-inset-top);
-                height: calc(var(--header-height-base) + env(safe-area-inset-top));
-                background-color: #ffffff !important;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            }
-            .app-sidebar, .navbar-toggler, .bi-list { display: none !important; }
-            .app-main {
-                margin-top: calc(var(--header-height-base) + env(safe-area-inset-top)) !important;
-                padding-bottom: calc(var(--bottom-nav-height) + 20px + env(safe-area-inset-bottom)) !important;
-            }
-            .bottom-navbar { display: flex !important; }
+        .sidebar-menu .nav-link {
+            color: var(--text-muted); border-radius: var(--radius-sm); margin: 4px 12px;
+            padding: 10px 16px; font-weight: 500; transition: all 0.2s;
+        }
+        .sidebar-menu .nav-link:hover, .sidebar-menu .nav-link.active {
+            background-color: var(--primary-accent); color: #fff;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+        .sidebar-menu .nav-icon { margin-right: 12px; font-size: 1.1rem; }
+
+        /* --- CARDS & STATS --- */
+        .card {
+            background-color: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: var(--radius-md); box-shadow: var(--shadow-sm); margin-bottom: 1.5rem;
+        }
+        .card-header-custom { 
+            padding: 1.25rem; border-bottom: 1px solid var(--border-color); 
+            display: flex; flex-wrap: wrap; align-items: center; gap: 15px; justify-content: space-between; 
         }
 
-        @media (min-width: 992px) {
-            .bottom-navbar { display: none !important; }
-            .app-main { margin-top: var(--header-height-base) !important; }
+        .stat-card {
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: var(--radius-md); padding: 1.5rem; position: relative;
+            transition: transform 0.2s, box-shadow 0.2s; height: 100%;
+            display: flex; flex-direction: column; justify-content: space-between;
         }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+        .stat-icon-wrapper {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; margin-bottom: 1rem;
+        }
+        .stat-value {
+            font-family: var(--font-display); font-size: 2rem; font-weight: 700;
+            line-height: 1; margin-bottom: 0.5rem; color: var(--text-main);
+        }
+        .stat-label { color: var(--text-muted); font-size: 0.875rem; font-weight: 500; }
 
-        /* --- 2. BARRA INFERIOR (MOBILE DOCK) --- */
+        .stat-blue .stat-icon-wrapper { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        .stat-green .stat-icon-wrapper { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+        .stat-orange .stat-icon-wrapper { background: rgba(249, 115, 22, 0.1); color: #f97316; }
+
+        /* --- BOTTOM NAV --- */
         .bottom-navbar {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
-            background: #ffffff;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-            display: none; justify-content: space-around; align-items: flex-start;
-            padding-top: 10px; padding-bottom: env(safe-area-inset-bottom);
-            z-index: 1040; border-top-left-radius: 20px; border-top-right-radius: 20px;
+            background-color: var(--bg-card); border-top: 1px solid var(--border-color);
+            z-index: 1050; padding-bottom: env(safe-area-inset-bottom);
         }
-        .nav-item-bottom {
+        .nav-item-bottom { color: var(--text-muted); font-size: 0.75rem; transition: color 0.2s; }
+        .nav-item-bottom.active { color: var(--primary-accent); }
+        .nav-item-bottom i { font-size: 1.5rem; margin-bottom: 2px; }
+
+        /* --- MOBILE MENU GRID --- */
+        .quick-action-btn {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            text-decoration: none; color: #adb5bd; font-size: 10px; font-weight: 500;
-            transition: all 0.3s ease; width: 20%;
+            padding: 15px; border-radius: 16px; background-color: var(--bg-body);
+            color: var(--text-main); text-decoration: none; border: 1px solid var(--border-color);
+            transition: transform 0.1s; height: 100%;
         }
-        .nav-item-bottom i { font-size: 22px; margin-bottom: 4px; }
-        .nav-item-bottom.active { color: #0d6efd; }
-        .nav-item-bottom.active i { transform: translateY(-3px); }
-
-        /* --- 3. WIDGETS COLORIDOS --- */
-        .small-box { position: relative; overflow: hidden; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: none; color: white; margin-bottom: 15px; }
-        .small-box .icon {
-            position: absolute; top: 10px; right: 10px; z-index: 0;
-            font-size: 60px; color: rgba(255, 255, 255, 0.2); transition: all 0.3s linear;
+        .quick-action-btn:active { transform: scale(0.96); }
+        .quick-action-btn i { font-size: 1.8rem; margin-bottom: 8px; }
+        .quick-action-btn span { font-size: 0.8rem; font-weight: 600; }
+        
+        /* --- ESTILOS ESPECÍFICOS FROTA --- */
+        .btn-modern { 
+            background-color: var(--primary-accent); color: #fff; border: none; 
+            border-radius: var(--radius-sm); padding: 0.5rem 1.2rem; font-weight: 500; transition: background 0.2s; 
         }
-        .small-box:hover .icon { transform: scale(1.1); }
-        .small-box .inner { position: relative; z-index: 1; padding: 15px; }
-        .small-box h3 { font-size: 2rem; font-weight: 700; margin: 0; }
-        .small-box p { font-size: 0.9rem; margin-bottom: 0; font-weight: 600; opacity: 0.9; text-transform: uppercase; }
+        .btn-modern:hover { background-color: var(--primary-hover); color: #fff; }
 
-        /* Cores */
-        .bg-primary { background-color: #0d6efd !important; }
-        .bg-success { background-color: #198754 !important; }
-        .bg-warning { background-color: #ffc107 !important; color: #000 !important; }
-        
-        /* --- 4. TABELA DE FROTA OTIMIZADA (Fix Erro #18) --- */
-        .dataTables_filter { display: none; } 
-        
-        /* BADGES SUAVES */
-        .badge-soft-success { background: #d1e7dd; color: #0f5132; }
-        .badge-soft-danger { background: #f8d7da; color: #842029; }
-        .badge-plate { background: #f8f9fa; color: #333; border: 1px solid #ddd; font-family: monospace; }
-        
-        /* Novo: Para a imagem do veículo na modal */
-        .vehicle-photo {
-            width: 100px;
-            height: 100px;
-            object-fit: cover;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        /* Tabela Desktop */
+        .table { --bs-table-bg: transparent; --bs-table-color: var(--text-main); border-color: var(--border-color); width: 100%; }
+        .table td { padding: 1rem; vertical-align: middle; border-bottom: 1px solid var(--border-color); }
+        .table thead th { 
+            background-color: var(--table-head-bg) !important; color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color); font-weight: 600;
+            padding: 1rem; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px;
+        }
+        .badge-plate { 
+            font-family: monospace; font-size: 0.9rem; background: var(--bg-body); 
+            color: var(--text-main); border: 1px solid var(--border-color); padding: 4px 8px; border-radius: 4px; 
         }
 
-        @media (max-width: 576px) {
-            /* Esconde cabeçalho da tabela */
+        /* Mobile Card View (Tabela em Cards) */
+        @media (max-width: 991.98px) {
+            .search-and-buttons { flex-direction: column; gap: 10px; width: 100%; }
+            #filter-container { width: 100%; }
+            
             #fleetTable thead { display: none; }
-            
-            /* A linha da tabela (TR) torna-se um bloco (Cartão) */
             #fleetTable tbody tr {
-                display: block;
-                width: 100%;
-                margin-bottom: 15px;
-                border: none;
-                padding: 0;
-                background: transparent;
+                display: flex; flex-direction: column; position: relative;
+                background: var(--bg-card); border: 1px solid var(--border-color);
+                border-radius: 16px; margin-bottom: 12px; padding: 16px;
+                box-shadow: var(--shadow-sm);
             }
+            #fleetTable tbody td { display: block; border: none !important; padding: 2px 0; width: 100% !important; }
+            
+            /* Ajustes visuais das células em mobile */
+            /* Coluna 1: Status (Badge) */
+            #fleetTable tbody td:nth-child(1) { position: absolute; top: 16px; right: 16px; width: auto !important; text-align: right; }
+            
+            /* Coluna 2: Viatura (Marca/Modelo) */
+            #fleetTable tbody td:nth-child(2) { font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; padding-right: 60px !important; }
+            
+            /* Coluna 3: Matrícula */
+            #fleetTable tbody td:nth-child(3) { margin-bottom: 12px; }
+            
+            /* Coluna 4: Condutor */
+            #fleetTable tbody td:nth-child(4) { 
+                font-size: 0.9rem; color: var(--text-muted); display: flex; align-items: center; margin-bottom: 8px;
+            }
+            #fleetTable tbody td:nth-child(4):before { content: "\F4E1"; font-family: "bootstrap-icons"; margin-right: 8px; color: var(--primary-accent); }
+            
+            /* Coluna 5: Inspeção */
+            #fleetTable tbody td:nth-child(5) { font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between; border-top: 1px dashed var(--border-color) !important; padding-top: 8px !important; margin-top: 4px; }
+            #fleetTable tbody td:nth-child(5):before { content: "Inspeção:"; font-weight: 600; }
+            
+            /* Coluna 6: Seguro */
+            #fleetTable tbody td:nth-child(6) { font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between; padding-bottom: 8px !important; margin-bottom: 8px; }
+            #fleetTable tbody td:nth-child(6):before { content: "Seguro:"; font-weight: 600; }
 
-            /* A primeira célula (TD) contém o cartão mobile */
-            #fleetTable tbody td {
-                display: block;
-                width: 100%;
-                padding: 0;
-                border: none;
-            }
-            
-            /* Esconde as outras células no mobile para não duplicar ou estragar layout */
-            #fleetTable tbody td:not(:first-child) {
-                display: none; 
-            }
-
-            /* Estilo do Cartão Mobile (que está dentro da primeira TD) */
-            .mobile-card {
-                display: block !important; 
-                background: #fff;
-                border-radius: 12px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-                border: 1px solid #f0f0f0;
-                position: relative;
-                overflow: hidden;
-            }
-            
-            /* Indicador Lateral */
-            .mobile-card.row-active { border-left: 5px solid #198754; }
-            .mobile-card.row-inactive { border-left: 5px solid #dc3545; }
-
-            /* Conteúdo Mobile */
-            .mc-content { padding: 15px; }
-            .mc-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-            .mc-title { font-size: 1.1rem; font-weight: 800; color: #1f2937; line-height: 1.2; }
-            .mc-plate { background: #f3f4f6; padding: 4px 8px; border-radius: 6px; font-family: monospace; font-weight: 700; color: #374151; border: 1px solid #e5e7eb; }
-            
-            .mc-status { margin-bottom: 15px; }
-            
-            /* Remoção das barras de progresso (KM) */
-            .mc-progress { display: none; } 
-            
-            .mc-dates { display: flex; gap: 10px; margin-bottom: 0; }
-            .date-box { flex: 1; background: #f8f9fa; padding: 8px; border-radius: 8px; text-align: center; border: 1px solid #eee; }
-            .date-lbl { font-size: 0.65rem; text-transform: uppercase; color: #999; font-weight: 700; display: block; }
-            .date-val { font-size: 0.85rem; font-weight: 700; color: #333; }
-
-            .mc-actions {
-                display: flex; border-top: 1px solid #f0f0f0;
-            }
-            .btn-m {
-                flex: 1; border: none; background: #fff; font-size: 0.85rem; font-weight: 600;
-                display: flex; align-items: center; justify-content: center; gap: 6px;
-                cursor: pointer; text-decoration: none; color: #555; padding: 12px 0;
-            }
-            .btn-m:first-child { border-right: 1px solid #f0f0f0; color: #d97706; }
-            .btn-m:last-child { color: #dc2626; }
+            /* Coluna 7: Ações */
+            #fleetTable tbody td:last-child { display: flex; gap: 10px; margin-top: 5px; }
+            #fleetTable tbody td:last-child .btn { flex: 1; justify-content: center; }
         }
 
-        @media (min-width: 577px) {
-            .mobile-card { display: none !important; } /* Esconde cartão mobile no PC */
-            .dataTables_filter { display: block; margin-bottom: 1rem; }
+        .dataTables_filter input { 
+            background-color: var(--bg-body); border: 1px solid var(--border-color); 
+            color: var(--text-main); border-radius: 50px; padding: 6px 15px; width: 100%;
         }
+        .dataTables_length { display: none; }
+        
+        .vehicle-photo-preview { width: 100%; max-height: 150px; object-fit: cover; border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--border-color); display: none; }
     </style>
-  </head>
-  <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+</head>
+
+<body class="layout-fixed sidebar-expand-lg">
     <div class="app-wrapper">
       
-      <nav class="app-header navbar navbar-expand bg-body">
+      <nav class="app-header navbar navbar-expand">
         <div class="container-fluid">
           <ul class="navbar-nav">
             <li class="nav-item">
               <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button">
-                <i class="bi bi-list" style="font-size: 1.5rem;"></i>
+                <i class="bi bi-list text-muted fs-4"></i>
               </a>
             </li>
-            <li class="nav-item d-lg-none ms-2">
-                <span class="fw-bold fs-5">Frota</span>
+            <li class="nav-item d-lg-none ms-2 d-flex align-items-center">
+                <img src="../../../assets/images/icons/SyncRide.png" id="header-logo" alt="SyncRide" style="height: 30px;">
             </li>
           </ul>
-          <ul class="navbar-nav ms-auto">
+          <ul class="navbar-nav ms-auto align-items-center">
+            
+            <li class="nav-item me-3">
+                <button class="btn btn-link text-muted p-0 border-0" id="theme-toggle">
+                    <i class="bi bi-moon-stars-fill fs-5" id="theme-icon"></i>
+                </button>
+            </li>
+
             <li class="nav-item dropdown user-menu">
-              <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
-                <img src="https://syncride.webminds.pt/Includes/dist/assets/img/user2-160x160.jpg" class="user-image rounded-circle shadow" alt="User Image" />
-                <span class="d-none d-md-inline"><?php echo $_SESSION['name']; ?></span>
+              <a href="#" class="nav-link dropdown-toggle d-flex align-items-center gap-2" data-bs-toggle="dropdown">
+                <img src="<?php echo $userPhoto; ?>" class="user-image rounded-circle shadow-sm" alt="User Image" style="width: 38px; height: 38px; object-fit: cover;">
+                <div class="d-none d-md-block text-start lh-1">
+                    <span class="d-block fw-semibold text-main small"><?php echo $_SESSION['name']; ?></span>
+                    <span class="text-muted" style="font-size: 0.7rem;">Administrador</span>
+                </div>
               </a>
-              <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
-                <li class="user-header text-bg-primary">
-                  <img src="https://syncride.webminds.pt/Includes/dist/assets/img/user2-160x160.jpg" class="rounded-circle shadow" alt="User Image" />
-                  <p><?php echo $_SESSION['name']; ?> - Admin</p>
+              <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end border-0 shadow-lg rounded-4 overflow-hidden mt-2">
+                <li class="user-header bg-primary text-white p-4 text-center">
+                  <img src="<?php echo $userPhoto; ?>" class="rounded-circle shadow mb-2 border border-2 border-white" alt="User Image" style="width: 80px; height: 80px; object-fit: cover;">
+                  <p class="mb-0 fw-bold"><?php echo $_SESSION['name']; ?></p>
+                  <small class="opacity-75">Gestor de Frota</small>
                 </li>
-                <li class="user-footer">
-                  <a href="logout.php" class="btn btn-default btn-flat float-end">Sair</a>
+                <li class="user-footer p-3 bg-card d-flex justify-content-between">
+                  <a href="#" class="btn btn-light btn-sm rounded-pill px-4">Perfil</a>
+                  <a href="logout.php" class="btn btn-danger btn-sm rounded-pill px-4">Sair</a>
                 </li>
               </ul>
             </li>
@@ -239,262 +316,272 @@ foreach($vehicles as $v) {
         </div>
       </nav>
 
-      <aside class="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
-        <div class="sidebar-brand"><a href="./admin.php" class="brand-link"><img src="https://syncride.webminds.pt/Includes/dist/assets/img/AdminLTELogo.png" class="brand-image opacity-75 shadow"><span class="brand-text fw-light">SyncRide</span></a></div>
-        <div class="sidebar-wrapper">
-          <nav class="mt-2">
-            <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu">
-                <li class="nav-item"><a href="admin.php" class="nav-link"><i class="nav-icon bi bi-speedometer"></i><p>Dashboard</p></a></li>
-                <li class="nav-item"><a href="ManageRides.php" class="nav-link"><i class="nav-icon bi bi-car-front"></i><p>Viagens</p></a></li>
-                <li class="nav-item"><a href="manageUsers.php" class="nav-link"><i class="nav-icon bi bi-people-fill"></i><p>Funcionários</p></a></li>
-                <li class="nav-item"><a href="manageFleet.php" class="nav-link active"><i class="nav-icon bi bi-car-front-fill"></i><p>Frota</p></a></li>
-                <li class="nav-item"><a href="admin_driver_stats.php" class="nav-link"><i class="nav-icon bi bi-graph-up"></i><p>Estatísticas</p></a></li>
-                <li class="nav-item"><a href="ManageNoShows.php" class="nav-link"><i class="nav-icon bi bi-camera-fill"></i><p>No Shows</p></a></li>
-                <li class="nav-item"><a href="financial.php" class="nav-link"><i class="nav-icon bi bi-cash-coin"></i><p>Financeiro</p></a></li>
-                <li class="nav-item"><a href="manageStorage.php" class="nav-link"><i class="nav-icon bi bi-archive-fill"></i><p>Armazenamento</p></a></li>
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">
+          <a href="./admin.php" class="brand-link">
+            <img src="../../../assets/images/icons/SyncRide.png" id="sidebar-logo" alt="SyncRide Logo" class="brand-image" style="opacity: 1;">
+          </a>
+        </div>
+        
+        <div class="sidebar-wrapper mt-3">
+          <nav>
+            <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu" data-accordion="false">
+              <li class="nav-header text-muted fw-bold small text-uppercase px-3 mb-2">Visão Geral</li>
+              
+              <li class="nav-item"><a href="admin.php" class="nav-link"><i class="nav-icon bi bi-grid-fill"></i><p>Dashboard</p></a></li>
+              <li class="nav-item"><a href="live_map.php" class="nav-link"><i class="nav-icon bi bi-map-fill"></i><p>Live Map</p></a></li>
+              <li class="nav-item"><a href="ManageRides.php" class="nav-link"><i class="nav-icon bi bi-car-front-fill"></i><p>Viagens</p></a></li>
+              
+              <li class="nav-header text-muted fw-bold small text-uppercase px-3 mb-2 mt-4">Gestão</li>
+              
+              <li class="nav-item"><a href="manageUsers.php" class="nav-link"><i class="nav-icon bi bi-people-fill"></i><p>Equipa</p></a></li>
+              <li class="nav-item">
+                  <a href="manageFleet.php" class="nav-link active">
+                      <i class="nav-icon bi bi-truck-front-fill"></i>
+                      <p>Frota</p>
+                  </a>
+              </li>
+              <li class="nav-item"><a href="financial.php" class="nav-link"><i class="nav-icon bi bi-cash-coin"></i><p>Financeiro</p></a></li>
+              <li class="nav-item"><a href="admin_driver_stats.php" class="nav-link"><i class="nav-icon bi bi-bar-chart-fill"></i><p>Estatísticas</p></a></li>
+              <li class="nav-item"><a href="ManageNoShows.php" class="nav-link"><i class="nav-icon bi bi-exclamation-triangle-fill"></i><p>No Shows</p></a></li>
+              <li class="nav-item"><a href="manageStorage.php" class="nav-link"><i class="nav-icon bi bi-hdd-network-fill"></i><p>Armazenamento</p></a></li>
             </ul>
           </nav>
         </div>
       </aside>
 
-      <div class="bottom-navbar">
-        <a href="admin.php" class="nav-item-bottom"><i class="bi bi-house-door-fill"></i><span>Home</span></a>
-        <a href="ManageRides.php" class="nav-item-bottom"><i class="bi bi-car-front-fill"></i><span>Viagens</span></a>
-        <a href="admin_driver_stats.php" class="nav-item-bottom"><i class="bi bi-bar-chart-fill"></i><span>Stats</span></a>
-        <a href="manageUsers.php" class="nav-item-bottom"><i class="bi bi-people-fill"></i><span>Staff</span></a>
-        <a href="#" class="nav-item-bottom active" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu"><i class="bi bi-grid-fill"></i><span>Mais</span></a>
+      <div class="bottom-navbar position-fixed bottom-0 w-100 d-lg-none d-flex justify-content-around align-items-center shadow-lg">
+        <a href="admin.php" class="nav-item-bottom text-decoration-none d-flex flex-column align-items-center">
+            <i class="bi bi-grid-fill"></i><span>Home</span>
+        </a>
+        <a href="ManageRides.php" class="nav-item-bottom text-decoration-none d-flex flex-column align-items-center">
+            <i class="bi bi-car-front-fill"></i><span>Viagens</span>
+        </a>
+        <a href="manageFleet.php" class="nav-item-bottom active text-decoration-none d-flex flex-column align-items-center">
+            <i class="bi bi-truck-front-fill"></i><span>Frota</span>
+        </a>
+        <a href="#" class="nav-item-bottom text-decoration-none d-flex flex-column align-items-center" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu">
+            <i class="bi bi-three-dots"></i><span>Menu</span>
+        </a>
       </div>
 
-      <div class="offcanvas offcanvas-bottom" tabindex="-1" id="mobileMenu" style="height: 60vh; border-top-left-radius: 20px; border-top-right-radius: 20px;">
-        <div class="offcanvas-header">
-          <h5 class="offcanvas-title fw-bold">Menu Completo</h5>
+      <div class="offcanvas offcanvas-bottom rounded-top-4" tabindex="-1" id="mobileMenu" style="height: auto; min-height: 40vh;">
+        <div class="offcanvas-header pb-0">
+          <h5 class="offcanvas-title fw-bold text-main">Menu Rápido</h5>
           <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
         </div>
-        <div class="offcanvas-body">
-            <div class="row g-3 text-center">
-                <div class="col-4">
-                    <a href="manageFleet.php" class="d-block p-3 rounded bg-light text-decoration-none text-dark border border-primary bg-opacity-10">
-                        <i class="bi bi-car-front-fill fs-1 text-primary"></i><div class="small mt-2 fw-bold">Frota</div>
-                    </a>
-                </div>
-                <div class="col-4">
-                    <a href="financial.php" class="d-block p-3 rounded bg-light text-decoration-none text-dark">
-                        <i class="bi bi-cash-coin fs-1 text-success"></i><div class="small mt-2">Financeiro</div>
-                    </a>
-                </div>
-                <div class="col-4">
-                    <a href="ManageNoShows.php" class="d-block p-3 rounded bg-light text-decoration-none text-dark">
-                        <i class="bi bi-camera-fill fs-1 text-danger"></i><div class="small mt-2">No Shows</div>
-                    </a>
-                </div>
-                <div class="col-4">
-                    <a href="manageStorage.php" class="d-block p-3 rounded bg-light text-decoration-none text-dark">
-                        <i class="bi bi-hdd-fill fs-1 text-warning"></i><div class="small mt-2">Storage</div>
-                    </a>
-                </div>
-                <div class="col-4">
-                    <a href="logout.php" class="d-block p-3 rounded bg-light text-decoration-none text-dark">
-                        <i class="bi bi-box-arrow-right fs-1 text-secondary"></i><div class="small mt-2">Sair</div>
+        <div class="offcanvas-body pt-3">
+            <div class="row g-3">
+                <div class="col-4 text-center"><a href="financial.php" class="quick-action-btn shadow-sm"><i class="bi bi-cash-coin text-success"></i><span>Finanças</span></a></div>
+                <div class="col-4 text-center"><a href="manageFleet.php" class="quick-action-btn shadow-sm"><i class="bi bi-truck-front-fill text-primary"></i><span>Frota</span></a></div>
+                <div class="col-4 text-center"><a href="manageUsers.php" class="quick-action-btn shadow-sm"><i class="bi bi-people-fill text-info"></i><span>Equipa</span></a></div>
+                <div class="col-4 text-center"><a href="admin_driver_stats.php" class="quick-action-btn shadow-sm"><i class="bi bi-bar-chart-fill text-warning"></i><span>Stats</span></a></div>
+                <div class="col-4 text-center"><a href="ManageNoShows.php" class="quick-action-btn shadow-sm"><i class="bi bi-camera-fill text-danger"></i><span>NoShow</span></a></div>
+                <div class="col-4 text-center"><a href="manageStorage.php" class="quick-action-btn shadow-sm"><i class="bi bi-hdd-fill text-secondary"></i><span>Storage</span></a></div>
+                <div class="col-12 mt-3">
+                    <a href="logout.php" class="d-block p-3 rounded-4 bg-light text-decoration-none shadow-sm text-center text-danger fw-bold">
+                        <i class="bi bi-box-arrow-right me-2"></i> Sair
                     </a>
                 </div>
             </div>
         </div>
       </div>
 
-      <main class="app-main">
-        <div class="app-content-header pt-4">
-          <div class="container-fluid">
-            <div class="row align-items-center mb-3">
-              <div class="col-6"><h3 class="mb-0 fw-bold">Frota</h3></div>
-              <div class="col-6 text-end">
-                  <button class="btn btn-dark rounded-pill shadow px-3 btn-sm" data-bs-toggle="modal" data-bs-target="#modalVehicle">
-                      <i class="bi bi-plus-lg"></i> <span class="d-none d-sm-inline">Adicionar</span><span class="d-inline d-sm-none">Novo</span>
-                  </button>
-              </div>
-            </div>
-            <div class="d-block d-sm-none">
-                <div class="input-group shadow-sm rounded-3 overflow-hidden border-0">
-                    <span class="input-group-text bg-white border-0 text-muted ps-3"><i class="bi bi-search"></i></span>
-                    <input type="text" id="fleetSearch" class="form-control border-0 bg-white" placeholder="Procurar matrícula...">
-                </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="app-content mt-3">
+      <main class="app-main pt-4">
+        <div class="app-content">
           <div class="container-fluid">
             
-            <div class="row g-3 mb-4">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-3">
+                <div>
+                    <h3 class="fw-bold mb-0 text-main">Gestão de Frota</h3>
+                    <p class="text-muted mb-0 small">Manutenção de veículos e atribuição de condutores.</p>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-4">
                 <div class="col-lg-4 col-6">
-                    <div class="small-box bg-primary mb-0 h-100">
-                        <div class="inner"><h3><?php echo $totalVehicles; ?></h3><p>Total</p></div>
-                        <div class="icon"><i class="bi bi-truck"></i></div>
+                    <div class="stat-card stat-blue">
+                        <div><div class="stat-icon-wrapper"><i class="bi bi-truck"></i></div><div class="stat-value"><?= $totalVehicles ?></div><div class="stat-label">Total Veículos</div></div>
                     </div>
                 </div>
                 <div class="col-lg-4 col-6">
-                    <div class="small-box bg-success mb-0 h-100">
-                        <div class="inner"><h3><?php echo $activeVehicles; ?></h3><p>Ativos</p></div>
-                        <div class="icon"><i class="bi bi-check-circle"></i></div>
+                    <div class="stat-card stat-green">
+                        <div><div class="stat-icon-wrapper"><i class="bi bi-check-circle-fill"></i></div><div class="stat-value"><?= $activeVehicles ?></div><div class="stat-label">Ativos</div></div>
                     </div>
                 </div>
                 <div class="col-lg-4 col-12">
-                    <div class="small-box bg-warning mb-0 h-100">
-                        <div class="inner"><h3><?php echo $alerts; ?></h3><p>Atenção</p></div>
-                        <div class="icon"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div class="stat-card stat-orange">
+                        <div><div class="stat-icon-wrapper"><i class="bi bi-exclamation-triangle-fill"></i></div><div class="stat-value"><?= $alerts ?></div><div class="stat-label">Alertas (Doc)</div></div>
                     </div>
                 </div>
             </div>
 
-            <div class="card mb-4 shadow-sm border-0 rounded-4 bg-transparent">
+            <div class="card border-0">
+                <div class="card-header-custom">
+                    <h3 class="card-title fw-bold"><i class="bi bi-truck-front-fill me-2 text-primary"></i> Viaturas</h3>
+                    
+                    <div class="search-and-buttons d-flex align-items-center">
+                        <div id="filter-container" class="flex-grow-1 me-2" style="min-width: 200px;"></div>
+                        <button class="btn btn-modern shadow-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#modalVehicle">
+                            <i class="bi bi-plus-lg me-1"></i> <span class="d-none d-sm-inline">Adicionar</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="card-body p-0">
-                    <table id="fleetTable" class="table table-hover w-100 m-0 align-middle bg-white rounded-4 overflow-hidden">
-                        <thead class="table-light small text-muted">
-                            <tr>
-                                <th class="ps-4">Estado</th>
-                                <th>Viatura</th>
-                                <th>Matrícula</th>
-                                <th>Condutor</th>
-                                <th>Inspeção</th>
-                                <th>Seguro</th>
-                                <th class="text-end pe-4">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach($vehicles as $v): 
-                                $today = new DateTime();
-                                $inspDate = new DateTime($v['inspection_date']); $diffInsp = $today->diff($inspDate)->format("%r%a");
-                                $insuDate = new DateTime($v['insurance_date']); $diffInsu = $today->diff($insuDate)->format("%r%a");
-                                $rowClass = ($v['status'] == 1) ? 'row-active' : 'row-inactive';
-                            ?>
-                            <tr>
-                                <td class="ps-4">
+                    <div class="table-responsive">
+                        <table id="fleetTable" class="table table-hover align-middle mb-0 w-100">
+                            <thead>
+                                <tr>
+                                    <th class="ps-4">Estado</th>
+                                    <th>Viatura</th>
+                                    <th>Matrícula</th>
+                                    <th>Condutor</th>
+                                    <th>Inspeção</th>
+                                    <th>Seguro</th>
+                                    <th class="text-end pe-4">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($vehicles as $v): 
+                                    $today = new DateTime();
+                                    $inspDate = new DateTime($v['inspection_date']); $diffInsp = $today->diff($inspDate)->format("%r%a");
+                                    $insuDate = new DateTime($v['insurance_date']); $diffInsu = $today->diff($insuDate)->format("%r%a");
+                                ?>
+                                <tr>
+                                    <td class="ps-4">
+                                        <?php if($v['status'] == 1): ?>
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Ativo</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">Inativo</span>
+                                        <?php endif; ?>
+                                    </td>
                                     
-                                    <div class="mobile-card <?php echo $rowClass; ?>">
-                                        <div class="mc-content">
-                                            <div class="mc-header">
-                                                <div class="mc-title"><?php echo htmlspecialchars($v['brand'] . ' ' . $v['model']); ?></div>
-                                                <div class="mc-plate"><?php echo htmlspecialchars($v['license_plate']); ?></div>
-                                            </div>
-                                            
-                                            <div class="mc-status">
-                                                <?php if($v['status'] == 1): ?><span class="badge bg-success bg-opacity-10 text-success rounded-pill border border-success" style="font-size: 0.65rem;">Ativo</span>
-                                                <?php else: ?><span class="badge bg-danger bg-opacity-10 text-danger rounded-pill border border-danger" style="font-size: 0.65rem;">Inativo</span><?php endif; ?>
-                                            </div>
-
-                                            <div class="mc-progress">
-                                                <div class="mc-km-row">
-                                                    <span>Condutor: <?php echo htmlspecialchars($v['assigned_driver_name'] ?? 'N/A'); ?></span>
-                                                </div>
-                                            </div>
-
-                                            <div class="mc-dates">
-                                                <div class="date-box">
-                                                    <span class="date-lbl">Inspeção</span>
-                                                    <span class="date-val <?php echo ($diffInsp < 30) ? 'text-danger' : ''; ?>"><?php echo date('d/m/y', strtotime($v['inspection_date'])); ?></span>
-                                                </div>
-                                                <div class="date-box">
-                                                    <span class="date-lbl">Seguro</span>
-                                                    <span class="date-val <?php echo ($diffInsu < 30) ? 'text-danger' : ''; ?>"><?php echo date('d/m/y', strtotime($v['insurance_date'])); ?></span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="mc-actions">
-                                            <button class="btn-m bm-edit edit-btn" data-json='<?php echo json_encode($v); ?>'><i class="bi bi-pencil-fill"></i> EDITAR</button>
-                                            <a href="save_vehicle.php?action=delete&id=<?php echo $v['id']; ?>" class="btn-m bm-del" onclick="return confirm('Apagar?');"><i class="bi bi-trash-fill"></i> APAGAR</a>
-                                        </div>
-                                    </div>
+                                    <td class="fw-bold"><?php echo htmlspecialchars($v['brand'] . ' ' . $v['model']); ?></td>
+                                    <td><span class="badge-plate"><?php echo htmlspecialchars($v['license_plate']); ?></span></td>
+                                    <td class="text-muted"><?php echo htmlspecialchars($v['assigned_driver_name'] ?? '-'); ?></td>
                                     
-                                    <span class="d-none d-md-inline">
-                                        <?php if($v['status'] == 1): ?><span class="badge badge-soft-success rounded-pill">Ativo</span>
-                                        <?php else: ?><span class="badge badge-soft-danger rounded-pill">Inativo</span><?php endif; ?>
-                                    </span>
-                                </td>
-                                
-                                <td class="fw-bold text-dark d-none d-md-table-cell"><?php echo htmlspecialchars($v['brand'] . ' ' . $v['model']); ?></td>
-                                <td class="d-none d-md-table-cell"><span class="badge badge-plate"><?php echo htmlspecialchars($v['license_plate']); ?></span></td>
-                                <td class="d-none d-md-table-cell">
-                                    <?php echo htmlspecialchars($v['assigned_driver_name'] ?? 'N/A'); ?>
-                                </td>
-                                <td class="d-none d-md-table-cell <?php echo ($diffInsp < 30) ? 'text-danger fw-bold' : ''; ?>"><?php echo date('d/m/Y', strtotime($v['inspection_date'])); ?></td>
-                                <td class="d-none d-md-table-cell <?php echo ($diffInsu < 30) ? 'text-danger fw-bold' : ''; ?>"><?php echo date('d/m/Y', strtotime($v['insurance_date'])); ?></td>
-                                <td class="pe-4 text-end d-none d-md-table-cell">
-                                    <button class="btn btn-sm btn-light border edit-btn me-1" data-json='<?php echo json_encode($v); ?>'><i class="bi bi-pencil text-warning"></i></button>
-                                    <a href="save_vehicle.php?action=delete&id=<?php echo $v['id']; ?>" class="btn btn-sm btn-light border" onclick="return confirm('Apagar?');"><i class="bi bi-trash text-danger"></i></a>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                                    <td class="<?php echo ($diffInsp < 30) ? 'text-danger fw-bold' : 'text-muted'; ?>">
+                                        <?php echo date('d/m/Y', strtotime($v['inspection_date'])); ?>
+                                    </td>
+                                    <td class="<?php echo ($diffInsu < 30) ? 'text-danger fw-bold' : 'text-muted'; ?>">
+                                        <?php echo date('d/m/Y', strtotime($v['insurance_date'])); ?>
+                                    </td>
+                                    
+                                    <td class="pe-4 text-end">
+                                        <button class="btn btn-sm btn-light border edit-btn me-1" data-json='<?php echo json_encode($v); ?>'><i class="bi bi-pencil"></i></button>
+                                        <a href="save_vehicle.php?action=delete&id=<?php echo $v['id']; ?>" class="btn btn-sm btn-light border text-danger" onclick="return confirm('Tem a certeza que deseja apagar?');"><i class="bi bi-trash"></i></a>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
+
           </div>
         </div>
       </main>
+
+      <footer class="app-footer border-top-0 bg-transparent text-center py-4">
+        <strong class="text-main">SyncRide</strong> <span class="text-muted small">© 2025</span>
+      </footer>
     </div>
 
     <div class="modal fade" id="modalVehicle" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 rounded-4 shadow-lg">
+        <div class="modal-content border-0 rounded-4 shadow-lg" style="background-color: var(--bg-card); color: var(--text-main);">
           <form id="vehicleForm" action="save_vehicle.php" method="POST" enctype="multipart/form-data">
-              <div class="modal-header py-3 border-bottom-0">
-                <h5 class="modal-title fw-bold" id="modalTitle">Adicionar Veículo</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              <div class="modal-header border-bottom-0 pb-0">
+                  <h5 class="modal-title fw-bold ps-2" id="modalTitle">Adicionar Veículo</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
               </div>
-              <div class="modal-body px-4 pb-4 pt-0">
+              <div class="modal-body p-4">
                 <input type="hidden" name="vehicle_id" id="vehicle_id">
+                
+                <div class="text-center mb-4">
+                    <img id="currentVehiclePhoto" src="" class="vehicle-photo-preview">
+                    <label class="btn btn-light btn-sm border w-100 rounded-pill"><i class="bi bi-camera me-2"></i> Carregar Foto <input type="file" name="vehicle_photo" id="vehicle_photo_input" hidden accept="image/*"></label>
+                    <input type="hidden" name="existing_photo_path" id="existing_photo_path">
+                </div>
+                
                 <div class="row g-3">
-                    <div class="col-12 text-center">
-                        <img id="currentVehiclePhoto" src="" class="vehicle-photo" style="display:none;" alt="Foto do Veículo">
-                        <input type="file" name="vehicle_photo" id="vehicle_photo_input" class="form-control" accept="image/*">
-                        <input type="hidden" name="existing_photo_path" id="existing_photo_path">
-                    </div>
-                    <div class="col-6"><label class="small fw-bold text-muted">Marca</label><input type="text" name="brand" id="brand" class="form-control bg-light border-0" required placeholder="Mercedes"></div>
-                    <div class="col-6"><label class="small fw-bold text-muted">Modelo</label><input type="text" name="model" id="model" class="form-control bg-light border-0" required placeholder="Vito"></div>
-                    <div class="col-12"><label class="small fw-bold text-muted">Matrícula</label><input type="text" name="license_plate" id="license_plate" class="form-control bg-light border-0 fw-bold text-uppercase text-center" required placeholder="AA-00-BB"></div>
+                    <div class="col-6"><label class="form-label small text-muted fw-bold">Marca</label><input type="text" name="brand" id="brand" class="form-control bg-light border-0" required></div>
+                    <div class="col-6"><label class="form-label small text-muted fw-bold">Modelo</label><input type="text" name="model" id="model" class="form-control bg-light border-0" required></div>
                     
-                    <div class="col-6"><label class="small fw-bold text-muted">Inspeção</label><input type="date" name="inspection_date" id="inspection_date" class="form-control bg-light border-0" required></div>
-                    <div class="col-6"><label class="small fw-bold text-muted">Seguro</label><input type="date" name="insurance_date" id="insurance_date" class="form-control bg-light border-0" required></div>
+                    <div class="col-12"><label class="form-label small text-muted fw-bold">Matrícula</label><input type="text" name="license_plate" id="license_plate" class="form-control bg-light border-0 text-center fw-bold" style="letter-spacing: 2px;" required></div>
                     
-                    <div class="col-12">
-                        <label class="small fw-bold text-muted">Condutor Associado</label>
-                        <select name="assigned_driver_id" id="assigned_driver_id" class="form-select bg-light border-0">
-                            <option value="">Nenhum</option>
-                            <?php foreach($drivers as $driver): ?>
-                                <option value="<?php echo $driver['id']; ?>"><?php echo htmlspecialchars($driver['name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                    <div class="col-6"><label class="form-label small text-muted fw-bold">Inspeção</label><input type="date" name="inspection_date" id="inspection_date" class="form-control bg-light border-0" required></div>
+                    <div class="col-6"><label class="form-label small text-muted fw-bold">Seguro</label><input type="date" name="insurance_date" id="insurance_date" class="form-control bg-light border-0" required></div>
                     
-                    <div class="col-12"><label class="small fw-bold text-muted">Estado</label><select name="status" id="status" class="form-select bg-light border-0"><option value="1">Ativo</option><option value="0">Inativo</option></select></div>
+                    <div class="col-12"><label class="form-label small text-muted fw-bold">Condutor Atribuído</label><select name="assigned_driver_id" id="assigned_driver_id" class="form-select bg-light border-0"><option value="">Nenhum</option><?php foreach($drivers as $driver): ?><option value="<?php echo $driver['id']; ?>"><?php echo htmlspecialchars($driver['name']); ?></option><?php endforeach; ?></select></div>
+                    
+                    <div class="col-12"><label class="form-label small text-muted fw-bold">Estado</label><select name="status" id="status" class="form-select bg-light border-0"><option value="1">Ativo</option><option value="0">Inativo</option></select></div>
                 </div>
               </div>
-              <div class="modal-footer border-0 px-4 pb-4 pt-0">
-                <button type="button" class="btn btn-light rounded-pill px-4 fw-bold text-muted" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-primary rounded-pill px-5 fw-bold ms-auto">Guardar</button>
+              <div class="modal-footer border-top-0 pt-0 px-4 pb-4">
+                <button type="submit" class="btn btn-modern w-100 rounded-pill shadow-sm">Guardar</button>
               </div>
           </form>
         </div>
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../../dist/js/adminlte.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/browser/overlayscrollbars.browser.es6.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta1/dist/js/adminlte.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     
     <script>
+        // --- Dark Mode & Logo Logic ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const htmlElement = document.documentElement;
+        
+        // Elementos do Logo
+        const headerLogo = document.getElementById('header-logo');
+        const sidebarLogo = document.getElementById('sidebar-logo');
+        const logoDark = "../../../assets/images/icons/SyncRide.png"; 
+        const logoLight = "../../../assets/images/icons/Syncridewhite.png";
+
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        htmlElement.setAttribute('data-bs-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        updateLogo(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const newTheme = htmlElement.getAttribute('data-bs-theme') === 'light' ? 'dark' : 'light';
+            htmlElement.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+            updateLogo(newTheme);
+        });
+
+        function updateThemeIcon(theme) {
+            themeIcon.className = theme === 'light' ? 'bi bi-moon-stars-fill fs-5' : 'bi bi-sun-fill fs-5';
+        }
+
+        function updateLogo(theme) {
+            const newSrc = theme === 'dark' ? logoLight : logoDark;
+            if(headerLogo) headerLogo.src = newSrc;
+            if(sidebarLogo) sidebarLogo.src = newSrc;
+        }
+
         $(document).ready(function() {
-            // Inicialização do DataTable (Tabela)
             var table = $('#fleetTable').DataTable({
-                language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-PT.json" },
-                pageLength: 20, lengthChange: false, ordering: false, dom: 'tp'
+                language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-PT.json", search: "", searchPlaceholder: "Procurar..." },
+                pageLength: 20, lengthChange: false, ordering: false, dom: 'rtp'
             });
-            $('#fleetSearch').on('keyup', function() { table.search(this.value).draw(); });
             
-            // Lógica para Abrir Modal em Edição
+            // Mover pesquisa para o header personalizado
+            $('#fleetTable_filter').appendTo('#filter-container');
+            
+            // Editar Veículo - Preencher Modal
             $(document).on('click', '.edit-btn', function() {
                 const data = $(this).data('json');
                 $('#modalTitle').text('Editar Veículo');
@@ -502,27 +589,20 @@ foreach($vehicles as $v) {
                 $('#brand').val(data.brand);
                 $('#model').val(data.model);
                 $('#license_plate').val(data.license_plate);
-                
-                // Associa Condutor
-                // Nota: Assumimos que a tabela vehicles tem driver_id (para leitura) OU que a associação Users.assigned_vehicle_id foi lida pelo PHP.
-                // Aqui vamos usar o campo 'assigned_driver_name' para pré-selecionar se a associação motorista->veículo for feita na tabela Users
-                // Como não temos o ID do motorista no objeto $v diretamente, teremos que assumir a associação correta é feita no save_vehicle.php
-                // Vamos tentar preencher o driver ID se ele estiver disponível na associação (ajustar conforme o seu save_vehicle.php)
-                // Se a coluna 'assigned_driver_id' foi adicionada à tabela Vehicles, use data.assigned_driver_id
-                
-                // Ajuste temporário: Para ler o driver ID, precisamos que ele venha no objeto $v.
-                // Como a consulta PHP (TOPO) junta Users.name, vou tentar usar o ID da Viatura para encontrar o driver.
-                // **O Ideal é que o PHP devolva V.assigned_driver_id**
-                
-                // Exemplo de como preencheria o campo de Condutor, se a coluna 'driver_id' estivesse no Veículo:
-                // $('#assigned_driver_id').val(data.driver_id); 
-
-
                 $('#inspection_date').val(data.inspection_date);
                 $('#insurance_date').val(data.insurance_date);
                 $('#status').val(data.status);
                 
-                // Lógica da Foto
+                // Associa o ID do condutor (se a query SQL retornou o ID na coluna user_id ou similar)
+                // A query usou "u.id AS assigned_driver_user_id". Vamos usar isso.
+                if(data.assigned_driver_user_id) {
+                    $('#assigned_driver_id').val(data.assigned_driver_user_id);
+                } else if (data.assigned_driver_id) {
+                    $('#assigned_driver_id').val(data.assigned_driver_id); // Fallback
+                } else {
+                    $('#assigned_driver_id').val(""); 
+                }
+
                 if (data.photo_path) {
                     $('#currentVehiclePhoto').attr('src', data.photo_path).show();
                     $('#existing_photo_path').val(data.photo_path);
@@ -530,25 +610,19 @@ foreach($vehicles as $v) {
                     $('#currentVehiclePhoto').hide();
                     $('#existing_photo_path').val('');
                 }
-
                 new bootstrap.Modal(document.getElementById('modalVehicle')).show();
             });
             
-            // Lógica de Limpeza ao Fechar Modal
             $('#modalVehicle').on('hidden.bs.modal', function () {
                 $(this).find('form').trigger('reset'); 
                 $('#modalTitle').text('Adicionar Veículo'); 
                 $('#vehicle_id').val('');
-                $('#currentVehiclePhoto').attr('src', '').hide(); // Limpa e esconde a foto
-                $('#assigned_driver_id').val(''); // Limpa a associação
+                $('#currentVehiclePhoto').hide();
             });
             
-            // Preview da Foto
             $('#vehicle_photo_input').on('change', function(event) {
                 const [file] = event.target.files;
-                if (file) {
-                    $('#currentVehiclePhoto').attr('src', URL.createObjectURL(file)).show();
-                }
+                if (file) $('#currentVehiclePhoto').attr('src', URL.createObjectURL(file)).show();
             });
             
             toastr.options = { "closeButton": true, "progressBar": true, "positionClass": "toast-top-right", "timeOut": "5000" };

@@ -66,7 +66,8 @@ try {
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>Dashboard | SyncRide</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
     
@@ -94,6 +95,10 @@ try {
             --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
             --radius-md: 16px;
             --radius-sm: 10px;
+
+            /* CORREÇÃO 2: Variáveis de Safe Area */
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
         }
 
         [data-bs-theme="dark"] {
@@ -113,6 +118,17 @@ try {
             background-color: var(--bg-body);
             color: var(--text-main);
             transition: background-color 0.3s, color 0.3s;
+            
+            /* CORREÇÃO 3: Padding para Mobile (Menu Inferior) */
+            padding-bottom: calc(80px + var(--safe-bottom)); 
+            padding-top: 0;
+            margin: 0;
+            min-height: 100vh;
+        }
+        
+        /* Ajuste Desktop: Remove padding bottom excessivo se não houver menu inferior */
+        @media (min-width: 992px) {
+            body { padding-bottom: 0; }
         }
 
         /* --- NAVBAR & SIDEBAR --- */
@@ -120,7 +136,13 @@ try {
             background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border-color);
-            height: 70px;
+            
+            /* CORREÇÃO 4: Header Sticky e com Padding do Notch */
+            padding-top: var(--safe-top); 
+            height: calc(70px + var(--safe-top));
+            display: flex; align-items: center; /* Centrar verticalmente o conteudo */
+            
+            position: sticky; top: 0; z-index: 1020;
         }
         [data-bs-theme="dark"] .app-header { background: rgba(30, 41, 59, 0.85); }
 
@@ -128,9 +150,15 @@ try {
             background-color: var(--bg-card);
             border-right: 1px solid var(--border-color);
             box-shadow: var(--shadow-sm);
+            /* Sidebar deve ficar abaixo do header se usar layout fixed, ou ajustar z-index */
+            top: 0; 
+            padding-top: 0;
         }
         .sidebar-brand {
-            height: 70px; display: flex; align-items: center; justify-content: center;
+            /* Ajuste para alinhar com o header novo */
+            height: calc(70px + var(--safe-top)); 
+            padding-top: var(--safe-top);
+            display: flex; align-items: center; justify-content: center;
             border-bottom: 1px solid var(--border-color);
         }
         .brand-link { text-decoration: none; }
@@ -191,16 +219,27 @@ try {
         }
         .btn-modern:hover { background-color: var(--primary-hover); color: #fff; }
 
-        /* --- BOTTOM NAV --- */
+        /* --- BOTTOM NAV (CORRIGIDA) --- */
         .bottom-navbar {
+            position: fixed; bottom: 0; left: 0; width: 100%;
+            height: calc(70px + var(--safe-bottom));
             background-color: var(--bg-card); border-top: 1px solid var(--border-color);
-            z-index: 1050; padding-bottom: env(safe-area-inset-bottom);
+            display: flex; justify-content: space-around; align-items: flex-start;
+            z-index: 1030; 
+            
+            /* Padding seguro para o botão "swipe home" do iPhone */
+            padding-bottom: var(--safe-bottom);
+            padding-top: 10px;
         }
-        .nav-item-bottom { color: var(--text-muted); font-size: 0.75rem; transition: color 0.2s; }
+        .nav-item-bottom { 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--text-muted); text-decoration: none; font-size: 0.75rem; font-weight: 500;
+            width: 100%; height: 50px; transition: color 0.2s;
+        }
         .nav-item-bottom.active { color: var(--primary-accent); }
         .nav-item-bottom i { font-size: 1.5rem; margin-bottom: 2px; }
 
-        /* --- MOBILE MENU GRID (Adicionado para as apps) --- */
+        /* --- MOBILE MENU GRID --- */
         .quick-action-btn {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             padding: 15px; border-radius: 16px; background-color: var(--bg-body);
@@ -225,7 +264,7 @@ try {
               </a>
             </li>
             <li class="nav-item d-lg-none ms-2 d-flex align-items-center">
-                <img src="../../../assets/images/icons/SyncRide.png" id="header-logo" alt="SyncRide" style="height: 30px;">
+                <img src="../../../assets/images/icons/Syncride.png" id="header-logo" alt="SyncRide" style="height: 30px;">
             </li>
           </ul>
           <ul class="navbar-nav ms-auto align-items-center">
@@ -263,7 +302,7 @@ try {
       <aside class="app-sidebar">
         <div class="sidebar-brand">
           <a href="./admin.php" class="brand-link">
-            <img src="../../../assets/images/icons/SyncRide.png" id="sidebar-logo" alt="SyncRide Logo" class="brand-image" style="opacity: 1;">
+            <img src="../../../assets/images/icons/Syncride.png" id="sidebar-logo" alt="SyncRide Logo" class="brand-image" style="opacity: 1;">
           </a>
         </div>
         
@@ -334,22 +373,22 @@ try {
         </div>
       </aside>
 
-      <div class="bottom-navbar position-fixed bottom-0 w-100 d-lg-none d-flex justify-content-around align-items-center shadow-lg">
-        <a href="admin.php" class="nav-item-bottom active text-decoration-none d-flex flex-column align-items-center">
+      <div class="bottom-navbar d-lg-none shadow-lg">
+        <a href="admin.php" class="nav-item-bottom active">
             <i class="bi bi-grid-fill"></i><span>Home</span>
         </a>
-        <a href="ManageRides.php" class="nav-item-bottom text-decoration-none d-flex flex-column align-items-center">
+        <a href="ManageRides.php" class="nav-item-bottom">
             <i class="bi bi-car-front-fill"></i><span>Viagens</span>
         </a>
-        <a href="live_map.php" class="nav-item-bottom text-decoration-none d-flex flex-column align-items-center">
+        <a href="live_map.php" class="nav-item-bottom">
             <i class="bi bi-map-fill"></i><span>LiveMap</span>
         </a>
-        <a href="#" class="nav-item-bottom text-decoration-none d-flex flex-column align-items-center" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu">
+        <a href="#" class="nav-item-bottom" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu">
             <i class="bi bi-three-dots"></i><span>Menu</span>
         </a>
       </div>
 
-      <div class="offcanvas offcanvas-bottom rounded-top-4" tabindex="-1" id="mobileMenu" style="height: auto; min-height: 40vh;">
+      <div class="offcanvas offcanvas-bottom rounded-top-4" tabindex="-1" id="mobileMenu" style="height: auto; min-height: 40vh; z-index: 2000;">
         <div class="offcanvas-header pb-0">
           <h5 class="offcanvas-title fw-bold text-main">Menu Rápido</h5>
           <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
@@ -553,7 +592,7 @@ try {
         const sidebarLogo = document.getElementById('sidebar-logo');
 
         // Caminhos das imagens
-        const logoDark = "../../../assets/images/icons/SyncRide.png"; 
+        const logoDark = "../../../assets/images/icons/Syncride.png"; 
         const logoLight = "../../../assets/images/icons/Syncridewhite.png";
 
         const savedTheme = localStorage.getItem('theme') || 'light';

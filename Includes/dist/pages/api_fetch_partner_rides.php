@@ -36,7 +36,7 @@ try {
         };
 
         $statusLabel = ucfirst($ride['status_pedido']);
-        if($ride['status_pedido'] == 'pendente') $statusLabel = 'Aguardando';
+        if($ride['status_pedido'] == 'pendente') $statusLabel = 'pendente';
 
         // Formatar Data e Hora
         $dataHora = date('d/m/Y H:i', strtotime($ride['serviceDate'] . ' ' . $ride['serviceStartTime']));

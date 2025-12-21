@@ -1,18 +1,35 @@
 <?php
 // =================================================================
-// 1. INÍCIO DO BLOCO PHP - BUSCAR TODOS OS DADOS
+// 1. LÓGICA PHP (PRESERVADA)
 // =================================================================
 session_start();
-require __DIR__ . '/../../../auth/dbconfig.php'; // Inclui a configuração do banco de dados
+require __DIR__ . '/../../../auth/dbconfig.php'; 
 
-// Proteger a página e obter o ID do utilizador
+// Segurança
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 2) {
     header("refresh: 1; url=../../../index.php");
     exit();
 }
 $userId = $_SESSION['user_id'];
+$userName = $_SESSION['name'];
 
-// --- DADOS PARA AS "SMALL BOXES" ---
+// --- A. Lógica da Foto de Perfil (Para o Header Novo) ---
+$userPhotoPath = '../../dist/assets/img/user2-160x160.jpg'; 
+if (isset($_SESSION['profile_photo_path']) && !empty($_SESSION['profile_photo_path'])) {
+    $userPhotoPath = '../../../' . $_SESSION['profile_photo_path'];
+} else {
+    try {
+        $stmt = $pdo->prepare("SELECT profile_photo_path FROM Users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($result && !empty($result['profile_photo_path'])) {
+            $userPhotoPath = '../../../' . $result['profile_photo_path'];
+            $_SESSION['profile_photo_path'] = $result['profile_photo_path'];
+        }
+    } catch (PDOException $e) {}
+}
+
+// --- B. Estatísticas ---
 $viagensTotal = 0;
 $viagensUltimoMes = 0;
 $totalViagensAno = 0;
@@ -20,7 +37,7 @@ $mesMaisAtivo = '-';
 $meses_nomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 try {
-    // 1. Total de viagens feitas (desde sempre)
+    // 1. Total de viagens (Sempre)
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM Services s JOIN Services_Rides sr ON s.ID = sr.RideID WHERE sr.UserID = ? AND s.serviceDate <= CURDATE()");
     $stmt->execute([$userId]);
     $viagensTotal = $stmt->fetchColumn();
@@ -30,16 +47,11 @@ try {
     $stmt->execute([$userId]);
     $viagensUltimoMes = $stmt->fetchColumn();
 
-    // --- DADOS PARA O GRÁFICO E CARDS DO ANO ---
-    
-    // Obter o ano a partir do URL (?year=...). Se não existir, usa o ano atual.
+    // 3. Dados do Gráfico
     $selectedYear = isset($_GET['year']) ? (int)$_GET['year'] : date('Y');
+    $monthly_data = array_fill(1, 12, 0); 
 
-    // Inicializar os dados de todos os meses a zero
-    $monthly_data = array_fill(1, 12, 0); // Chaves de 1 a 12
-
-    // Buscar dados mensais para o ano selecionado
-    $sql = "SELECT MONTH(s.serviceDate) AS mes, COUNT(sr.associationID) AS total
+    $sql = "SELECT MONTH(s.serviceDate) AS mes, COUNT(sr.RideID) AS total
             FROM Services_Rides AS sr JOIN Services AS s ON sr.RideID = s.ID
             WHERE sr.UserID = :userId AND YEAR(s.serviceDate) = :year AND s.serviceDate <= CURDATE()
             GROUP BY mes";
@@ -51,302 +63,337 @@ try {
         $monthly_data[(int)$row['mes']] = (int)$row['total'];
     }
 
-    // Buscar todos os anos disponíveis para o seletor
+    // Anos disponíveis
     $stmt_years = $pdo->prepare("SELECT DISTINCT YEAR(s.serviceDate) as ano FROM Services_Rides AS sr JOIN Services AS s ON sr.RideID = s.ID WHERE sr.UserID = :userId ORDER BY ano DESC");
     $stmt_years->execute(['userId' => $userId]);
     $available_years = $stmt_years->fetchAll(PDO::FETCH_COLUMN);
-    
-    // Garantir que o ano atual está na lista se não houver viagens
-    if (empty($available_years)) {
-        $available_years[] = date('Y');
-    }
+    if (empty($available_years)) { $available_years[] = date('Y'); }
 
-    // Calcular stats para as caixas a partir dos dados do gráfico
+    // Stats adicionais baseadas no gráfico
     $totalViagensAno = array_sum($monthly_data);
     $maxViagensMes = max($monthly_data);
     if ($maxViagensMes > 0) {
-        $mesIndex = array_search($maxViagensMes, $monthly_data); // A chave é 1-12
-        $mesMaisAtivo = $meses_nomes[$mesIndex - 1]; // Ajustar para array 0-11
+        $mesIndex = array_search($maxViagensMes, $monthly_data);
+        $mesMaisAtivo = $meses_nomes[$mesIndex - 1]; 
     }
 
-    // Preparar os dados para passar ao JavaScript (Chart.js precisa de um array 0-indexed)
     $dashboard_data_for_js = [
         'labels' => $meses_nomes,
-        'data' => array_values($monthly_data), // Converte [1=>0, 2=>5,...] para [0, 5,...]
+        'data' => array_values($monthly_data),
         'available_years' => $available_years,
         'selected_year' => $selectedYear
     ];
 
-} catch (PDOException $e) {
-    die("Erro ao buscar dados do dashboard: " . $e->getMessage());
-}
+} catch (PDOException $e) { $viagensTotal = 0; }
 ?>
 
 <!doctype html>
-<html lang="pt">
+<html lang="pt" data-bs-theme="light">
   <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Estatísticas - Painel de Condutor</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5.0.12/index.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/styles/overlayscrollbars.min.css" />
+    <meta charset="utf-8" />
+    <title>Estatísticas | SyncRide</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="../../dist/css/adminlte.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
     
     <style>
-      .card-header.bg-gradient-driver {
-        background: linear-gradient(90deg, #00b0ff, #7f00ff);
-        color: white;
-      }
-      .year-selector {
-        padding: 4px 8px;
-        font-size: 0.9rem;
-        border-radius: 8px;
-        border: 1px solid #ddd;
-        background-color: white;
-        color: #333;
-      }
+        /* --- DESIGN SYSTEM (Unificado) --- */
+        :root {
+            --font-primary: 'Inter', sans-serif;
+            --font-display: 'Poppins', sans-serif;
+            --bg-body: #f3f4f6;
+            --bg-card: #ffffff;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --primary-accent: #4f46e5;
+            --primary-hover: #4338ca;
+            --border-color: #e5e7eb;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+            --radius-md: 16px;
 
-      /* --- BOTTOM NAVIGATION BAR (Igual ao driver.php) --- */
-      .bottom-nav {
-          position: fixed; bottom: 0; left: 0; width: 100%; height: 65px;
-          background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-          display: flex; justify-content: space-around; align-items: center;
-          z-index: 1000; border-top: 1px solid #eee;
-      }
-      .nav-item-mobile {
-          display: flex; flex-direction: column; align-items: center; justify-content: center;
-          color: #adb5bd; text-decoration: none; font-size: 0.75rem; width: 100%; height: 100%;
-      }
-      .nav-item-mobile i { font-size: 1.4rem; margin-bottom: 2px; transition: transform 0.2s; }
-      .nav-item-mobile.active { color: #00b0ff; font-weight: 600; }
-      .nav-item-mobile.active i { transform: translateY(-2px); }
-      
-      /* Ajuste para o conteúdo não ficar escondido atrás do menu */
-      .app-content { padding-bottom: 80px; }
+            /* UPDATE: Safe Area Variables */
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        [data-bs-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f9fafb;
+            --text-muted: #94a3b8;
+            --primary-accent: #6366f1;
+            --primary-hover: #818cf8;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            /* UPDATE: Padding ajustado para Safe Area */
+            padding-bottom: calc(80px + var(--safe-bottom));
+            padding-top: 0;
+            margin: 0;
+        }
+
+        /* --- HEADER --- */
+        .app-header {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            /* UPDATE: Padding superior com Safe Top */
+            padding: calc(15px + var(--safe-top)) 20px 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            position: sticky; top: 0; z-index: 1020;
+        }
+        .brand-logo { height: 30px; width: auto; }
+        .user-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-color); }
+
+        /* --- STAT CARDS (Novo Estilo) --- */
+        .stat-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 15px;
+            display: flex; align-items: center; gap: 15px;
+            box-shadow: var(--shadow-sm);
+            height: 100%;
+        }
+        .stat-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem; flex-shrink: 0;
+        }
+        
+        /* Cores dos Ícones */
+        .bg-indigo-soft { background: rgba(79, 70, 229, 0.1); color: var(--primary-accent); }
+        .bg-emerald-soft { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+        .bg-amber-soft { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+        .bg-pink-soft { background: rgba(236, 72, 153, 0.1); color: #ec4899; }
+
+        .stat-info { display: flex; flex-direction: column; justify-content: center; }
+        .stat-info h3 { font-family: var(--font-display); font-weight: 700; font-size: 1.4rem; margin: 0; line-height: 1; color: var(--text-main); }
+        .stat-info p { margin: 3px 0 0 0; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2; }
+
+        /* --- CHART CARD --- */
+        .chart-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            margin-bottom: 20px;
+        }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .chart-title { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; color: var(--text-main); margin: 0; }
+        
+        .year-select {
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 0.9rem;
+            outline: none;
+            font-weight: 600;
+        }
+
+        /* --- BOTTOM NAV --- */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; width: 100%; 
+            /* UPDATE: Altura e Padding com Safe Area */
+            height: calc(70px + var(--safe-bottom));
+            background-color: var(--bg-card); border-top: 1px solid var(--border-color);
+            display: flex; justify-content: space-around; 
+            align-items: flex-start;
+            z-index: 1030; 
+            padding-bottom: var(--safe-bottom);
+            padding-top: 10px;
+        }
+        .nav-item-mobile {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--text-muted); text-decoration: none; font-size: 0.75rem; font-weight: 500;
+            width: 100%; height: 50px; transition: color 0.2s;
+        }
+        .nav-item-mobile i { font-size: 1.5rem; margin-bottom: 4px; }
+        .nav-item-mobile.active { color: var(--primary-accent); }
+
     </style>
   </head>
-  <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+  <body>
     
-    <div class="app-wrapper">
-      
-      <nav class="app-header navbar navbar-expand bg-body">
-        <div class="container-fluid">
-          <ul class="navbar-nav"><li class="nav-item"><a class="nav-link" data-lte-toggle="sidebar" href="#"><i class="bi bi-list"></i></a></li></ul>
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item dropdown user-menu">
-              <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
-                <img src="../../dist/assets/img/user2-160x160.jpg" class="user-image rounded-circle shadow" alt="User Image" />
-                <span class="d-none d-md-inline"><?php echo $_SESSION['name']; ?></span>
-              </a>
-              <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
-                <li class="user-header text-bg-primary">
-                  <img src="../../dist/assets/img/user2-160x160.jpg" class="rounded-circle shadow" alt="User Image" />
-                  <p><?php echo $_SESSION['name']; ?> - Condutor</p>
-                </li>
-                <li class="user-footer">
-                  <a href="driver.php" class="btn btn-default btn-flat">Painel</a>
-                  <a href="logout.php" class="btn btn-default btn-flat float-end">Sair</a>
-                </li>
-              </ul>
-            </li>
-          </ul>
+    <header class="app-header">
+        <img src="../../../assets/images/icons/SyncRide.png" alt="SyncRide" class="brand-logo" id="header-logo">
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-link text-muted p-0" id="theme-toggle"><i class="bi bi-moon-stars-fill fs-5" id="theme-icon"></i></button>
+            <img src="<?php echo $userPhotoPath; ?>" class="user-avatar shadow-sm" alt="User">
         </div>
-      </nav>
+    </header>
 
-      <aside class="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
-        <div class="sidebar-brand"><a href="#" class="brand-link"><span class="brand-text fw-light">SyncRide</span></a></div>
-        <div class="sidebar-wrapper">
-          <nav class="mt-2">
-            <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="menu">
-                <li class="nav-item">
-                    <a href="driver.php" class="nav-link">
-                        <i class="nav-icon bi bi-car-front"></i>
-                        <p>Minhas Viagens</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="driver_agenda.php" class="nav-link">
-                        <i class="nav-icon bi bi-calendar3"></i>
-                        <p>Minha Agenda</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="driverstats.php" class="nav-link active">
-                        <i class="nav-icon bi bi-graph-up"></i>
-                        <p>Estatísticas</p>
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="logout.php" class="nav-link text-danger">
-                        <i class="nav-icon bi bi-box-arrow-right"></i>
-                        <p>Sair</p>
-                    </a>
-                </li>
-            </ul>
-          </nav>
-        </div>
-      </aside>
-
-      <main class="app-main">
-        <div class="app-content-header">
-          <div class="container-fluid">
-            <div class="row">
-              <div class="col-sm-6"><h3 class="mb-0">Minhas Estatísticas</h3></div>
-              <div class="col-sm-6">
-                <ol class="breadcrumb float-sm-end">
-                  <li class="breadcrumb-item"><a href="driver.php">Painel</a></li>
-                  <li class="breadcrumb-item active" aria-current="page">Estatísticas</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div class="container-fluid px-3 pt-3">
         
-        <div class="app-content">
-          <div class="container-fluid">
+        <h4 class="fw-bold mb-3 text-main">Performance 📊</h4>
+
+        <div class="row g-3 mb-4">
             
-            <div class="row">
-              <div class="col-lg-3 col-6">
-                  <div class="small-box text-bg-info">
-                      <div class="inner">
-                          <h3><?php echo $viagensTotal; ?></h3>
-                          <p>Viagens Totais<br>(Desde Sempre)</p>
-                      </div>
-                      <div class="small-box-icon"><i class="bi bi-archive"></i></div>
-                  </div>
-              </div>
-              <div class="col-lg-3 col-6">
-                  <div class="small-box text-bg-success">
-                      <div class="inner">
-                          <h3><?php echo $viagensUltimoMes; ?></h3>
-                          <p>Viagens<br>(Últimos 30 dias)</p>
-                      </div>
-                      <div class="small-box-icon"><i class="bi bi-calendar-month"></i></div>
-                  </div>
-              </div>
-              <div class="col-lg-3 col-6">
-                  <div class="small-box text-bg-primary">
-                      <div class="inner">
-                          <h3><?php echo $totalViagensAno; ?></h3>
-                          <p>Viagens Totais<br>(Ano: <?php echo $selectedYear; ?>)</p>
-                      </div>
-                      <div class="small-box-icon"><i class="bi bi-calendar-check"></i></div>
-                  </div>
-              </div>
-              <div class="col-lg-3 col-6">
-                  <div class="small-box text-bg-warning">
-                      <div class="inner">
-                          <h3><?php echo $mesMaisAtivo; ?></h3>
-                          <p>Mês de Topo<br>(Ano: <?php echo $selectedYear; ?>)</p>
-                      </div>
-                      <div class="small-box-icon"><i class="bi bi-graph-up-arrow"></i></div>
-                  </div>
-              </div>
-            </div>
-            
-            <div class="row">
-              <div class="col-12">
-                <div class="card mb-4 shadow-lg border-0 rounded-4">
-                    <div class="card-header text-center bg-gradient-driver rounded-top-4 d-flex justify-content-between align-items-center p-3">
-                        <h3 class="card-title fw-bold mb-0" style="font-size: 1.25rem;">
-                            📊 Volume de Viagens
-                        </h3>
-                        <select id="year-selector" class="year-selector"></select>
-                    </div>
-                    
-                    <div class="card-body p-4" style="background: #f1f5f9;">
-                        <div class="chart-container" style="background: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
-                            <canvas id="monthlyTripsChart" style="min-height: 300px;"></canvas>
-                        </div>
+            <div class="col-6">
+                <div class="stat-card">
+                    <div class="stat-icon bg-indigo-soft"><i class="bi bi-archive"></i></div>
+                    <div class="stat-info">
+                        <h3><?php echo $viagensTotal; ?></h3>
+                        <p>Total Geral</p>
                     </div>
                 </div>
-              </div>
             </div>
-            
-          </div>
-        </div>
-      </main>
-      
-      <footer class="app-footer">
-        <div class="float-end d-none d-sm-inline"></div>
-        SyncRide All rights reserved.
-      </footer>
 
-      <nav class="bottom-nav d-flex d-md-none">
-          <a href="driver.php" class="nav-item-mobile">
-              <i class="bi bi-car-front-fill"></i>
-              <span>Viagens</span>
-          </a>
-          <a href="driver_agenda.php" class="nav-item-mobile">
-              <i class="bi bi-calendar3"></i>
-              <span>Agenda</span>
-          </a>
-          <a href="driverstats.php" class="nav-item-mobile active">
-              <i class="bi bi-bar-chart-fill"></i>
-              <span>Stats</span>
-          </a>
-          <a href="logout.php" class="nav-item-mobile text-danger">
-              <i class="bi bi-box-arrow-right"></i>
-              <span>Sair</span>
-          </a>
-      </nav>
+            <div class="col-6">
+                <div class="stat-card">
+                    <div class="stat-icon bg-emerald-soft"><i class="bi bi-calendar-check"></i></div>
+                    <div class="stat-info">
+                        <h3><?php echo $viagensUltimoMes; ?></h3>
+                        <p>30 Dias</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="stat-card">
+                    <div class="stat-icon bg-amber-soft"><i class="bi bi-calendar3"></i></div>
+                    <div class="stat-info">
+                        <h3><?php echo $totalViagensAno; ?></h3>
+                        <p>Ano <?php echo $selectedYear; ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-6">
+                <div class="stat-card">
+                    <div class="stat-icon bg-pink-soft"><i class="bi bi-graph-up-arrow"></i></div>
+                    <div class="stat-info">
+                        <h3><?php echo $mesMaisAtivo; ?></h3>
+                        <p>Melhor Mês</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-header">
+                <h5 class="chart-title">Evolução Mensal</h5>
+                <select id="year-selector" class="year-select"></select>
+            </div>
+            <div style="height: 300px; position: relative;">
+                <canvas id="monthlyTripsChart"></canvas>
+            </div>
+        </div>
 
     </div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/browser/overlayscrollbars.browser.es6.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js"></script>
-    <script src="../../dist/js/adminlte.js"></script>
-    
-    <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const dashboardData = <?php echo json_encode($dashboard_data_for_js); ?>;
-        const yearSelector = document.getElementById('year-selector');
-        let myChart = null;
 
-        function renderChart(labels, data, year) {
-            const ctx = document.getElementById('monthlyTripsChart').getContext('2d');
-            if (myChart) myChart.destroy();
+    <nav class="bottom-nav">
+        <a href="driver.php" class="nav-item-mobile"><i class="bi bi-car-front-fill"></i><span>Viagens</span></a>
+        <a href="driver_agenda.php" class="nav-item-mobile"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
+        <a href="driverstats.php" class="nav-item-mobile active"><i class="bi bi-bar-chart-fill"></i><span>Stats</span></a>
+        <a href="logout.php" class="nav-item-mobile text-danger"><i class="bi bi-box-arrow-right"></i><span>Sair</span></a>
+    </nav>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        // 1. Theme Logic
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const htmlElement = document.documentElement;
+        const headerLogo = document.getElementById('header-logo');
+        const logoDark = "../../../assets/images/icons/SyncRide.png"; 
+        const logoLight = "../../../assets/images/icons/Syncridewhite.png";
+
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        htmlElement.setAttribute('data-bs-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+        updateLogo(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const newTheme = htmlElement.getAttribute('data-bs-theme') === 'light' ? 'dark' : 'light';
+            htmlElement.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+            updateLogo(newTheme);
+        });
+
+        function updateThemeIcon(theme) {
+            themeIcon.className = theme === 'light' ? 'bi bi-moon-stars-fill fs-5' : 'bi bi-sun-fill fs-5';
+        }
+        function updateLogo(theme) {
+            const newSrc = theme === 'dark' ? logoLight : logoDark;
+            if(headerLogo) headerLogo.src = newSrc;
+        }
+
+        // 2. Chart Logic
+        document.addEventListener('DOMContentLoaded', function () {
+            const dashboardData = <?php echo json_encode($dashboard_data_for_js); ?>;
+            const yearSelector = document.getElementById('year-selector');
+            let myChart = null;
             
+            // Populate Selector
+            dashboardData.available_years.forEach(y => {
+                const option = new Option(y, y);
+                if (y == dashboardData.selected_year) option.selected = true;
+                yearSelector.add(option);
+            });
+            
+            // Selector Event
+            yearSelector.addEventListener('change', function() {
+                const currentUrl = new URL(window.location);
+                currentUrl.searchParams.set('year', this.value);
+                window.location.href = currentUrl.toString();
+            });
+
+            // Render Chart
+            const ctx = document.getElementById('monthlyTripsChart').getContext('2d');
+            
+            // Cores do gráfico ajustadas ao tema (Azul Indigo)
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(79, 70, 229, 0.5)'); // Indigo
+            gradient.addColorStop(1, 'rgba(79, 70, 229, 0.0)');
+
             myChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: labels,
+                    labels: dashboardData.labels,
                     datasets: [{
-                        label: 'Nº de Viagens',
-                        data: data,
-                        backgroundColor: 'rgba(0, 123, 255, 0.7)',
-                        borderColor: 'rgba(0, 123, 255, 1)',
-                        borderWidth: 1,
-                        borderRadius: 5
+                        label: 'Viagens',
+                        data: dashboardData.data,
+                        backgroundColor: gradient,
+                        borderColor: '#4f46e5',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        barThickness: 'flex',
+                        maxBarThickness: 30
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-                    plugins: { legend: { display: false }, title: { display: false } }
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: 'rgba(200, 200, 200, 0.1)' },
+                            ticks: { font: { family: 'Inter' } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Inter' } }
+                        }
+                    },
+                    plugins: { 
+                        legend: { display: false }
+                    }
                 }
             });
-        }
-
-        dashboardData.available_years.forEach(y => {
-            const option = new Option(y, y);
-            if (y == dashboardData.selected_year) option.selected = true;
-            yearSelector.add(option);
         });
-        
-        yearSelector.addEventListener('change', function() {
-            const currentUrl = new URL(window.location);
-            currentUrl.searchParams.set('year', this.value);
-            window.location.href = currentUrl.toString();
-        });
-
-        renderChart(dashboardData.labels, dashboardData.data, dashboardData.selected_year);
-    });
     </script>
   </body>
 </html>

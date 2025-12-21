@@ -6,63 +6,25 @@ $viagens = [];
 $serviceTypeFilter = isset($_GET['serviceType']) ? $_GET['serviceType'] : null; 
 
 // --- 0. MODO API (AUTO-REFRESH) ---
-// Se o pedido tiver o parametro ?api=refresh, devolve JSON e para por aqui.
 if (isset($_GET['api']) && $_GET['api'] === 'refresh') {
     header('Content-Type: application/json');
-    
-    if (!isset($_SESSION['user_id'])) {
-        echo json_encode([]);
-        exit();
-    }
+    if (!isset($_SESSION['user_id'])) { echo json_encode([]); exit(); }
 
     $userId = $_SESSION['user_id'];
     $filterType = isset($_GET['serviceType']) ? $_GET['serviceType'] : null;
 
     try {
-        $query = "
-        SELECT 
-            s.ID AS ServiceID, 
-            s.serviceDate, 
-            s.serviceStartTime, 
-            s.serviceStartPoint, 
-            s.serviceTargetPoint,
-            s.paxADT, 
-            s.paxCHD,
-            s.FlightNumber, 
-            s.NomeCliente, 
-            s.ClientNumber,
-            s.serviceType,
-            s.total_price,
-            COALESCE(s.status_id, 0) as status_id
-        FROM Services_Rides sr
-        INNER JOIN Services s ON sr.RideID = s.ID
-        WHERE sr.UserID = ?";
-
-        if ($filterType !== null) {
-            $query .= " AND s.serviceType = ?";
-        }
-
+        $query = "SELECT s.ID AS ServiceID, s.serviceDate, s.serviceStartTime, s.serviceStartPoint, s.serviceTargetPoint, s.paxADT, s.paxCHD, s.FlightNumber, s.NomeCliente, s.ClientNumber, s.serviceType, s.total_price, COALESCE(s.status_id, 0) as status_id FROM Services_Rides sr INNER JOIN Services s ON sr.RideID = s.ID WHERE sr.UserID = ?";
+        if ($filterType !== null) { $query .= " AND s.serviceType = ?"; }
         $query .= " ORDER BY s.serviceDate ASC, s.serviceStartTime ASC";
-
         $stmt = $pdo->prepare($query);
-
-        if ($filterType !== null) {
-            $stmt->execute([$userId, $filterType]);
-        } else {
-            $stmt->execute([$userId]);
-        }
-
+        if ($filterType !== null) { $stmt->execute([$userId, $filterType]); } else { $stmt->execute([$userId]); }
         $viagensData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        echo json_encode($viagensData);
-        exit(); // IMPORTANTE: Não carregar o resto do HTML
-
-    } catch (PDOException $e) {
-        echo json_encode([]);
-        exit();
-    }
+        echo json_encode($viagensData); exit();
+    } catch (PDOException $e) { echo json_encode([]); exit(); }
 }
 
-// --- 1. VERIFICAÇÃO DE SESSÃO (Modo Normal) ---
+// --- 1. VERIFICAÇÃO DE SESSÃO ---
 if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role'] === 2) {
     $userId = $_SESSION['user_id']; 
     $userName = $_SESSION['name'];
@@ -83,48 +45,17 @@ if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role']
         } catch (PDOException $e) {}
     }
 
-    // --- 3. FETCH INICIAL DAS VIAGENS ---
+    // --- 3. FETCH INICIAL ---
     try {
-        $query = "
-        SELECT 
-            s.ID AS ServiceID, 
-            s.serviceDate, 
-            s.serviceStartTime, 
-            s.serviceStartPoint, 
-            s.serviceTargetPoint,
-            s.paxADT, 
-            s.paxCHD,
-            s.FlightNumber, 
-            s.NomeCliente, 
-            s.ClientNumber,
-            s.serviceType,
-            s.total_price,
-            COALESCE(s.status_id, 0) as status_id
-        FROM Services_Rides sr
-        INNER JOIN Services s ON sr.RideID = s.ID
-        WHERE sr.UserID = ?";
-
-        if ($serviceTypeFilter !== null) {
-            $query .= " AND s.serviceType = ?";
-        }
-
+        $query = "SELECT s.ID AS ServiceID, s.serviceDate, s.serviceStartTime, s.serviceStartPoint, s.serviceTargetPoint, s.paxADT, s.paxCHD, s.FlightNumber, s.NomeCliente, s.ClientNumber, s.serviceType, s.total_price, COALESCE(s.status_id, 0) as status_id FROM Services_Rides sr INNER JOIN Services s ON sr.RideID = s.ID WHERE sr.UserID = ?";
+        if ($serviceTypeFilter !== null) { $query .= " AND s.serviceType = ?"; }
         $query .= " ORDER BY s.serviceDate ASC, s.serviceStartTime ASC";
-
         $stmt = $pdo->prepare($query);
-
-        if ($serviceTypeFilter !== null) {
-            $stmt->execute([$userId, $serviceTypeFilter]);
-        } else {
-            $stmt->execute([$userId]);
-        }
-
+        if ($serviceTypeFilter !== null) { $stmt->execute([$userId, $serviceTypeFilter]); } else { $stmt->execute([$userId]); }
         $viagens = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        echo "Erro: " . $e->getMessage();
-    }
+    } catch (PDOException $e) { echo "Erro: " . $e->getMessage(); }
 } else {
-    header("refresh: 1; url=../../../index.php");
-    exit();
+    header("refresh: 1; url=../../../index.php"); exit();
 }
 
 // --- 4. ESTATÍSTICAS ---
@@ -132,946 +63,717 @@ $viagensHoje = 0; $viagensSemana = 0;
 if (isset($userId)) {
     try {
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM Services WHERE serviceDate = CURDATE() AND ID IN (SELECT RideID FROM Services_Rides WHERE UserID = ?)");
-        $stmt->execute([$userId]);
-        $viagensHoje = $stmt->fetchColumn();
+        $stmt->execute([$userId]); $viagensHoje = $stmt->fetchColumn();
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM Services WHERE YEARWEEK(serviceDate, 1) = YEARWEEK(CURDATE(), 1) AND ID IN (SELECT RideID FROM Services_Rides WHERE UserID = ?)");
-        $stmt->execute([$userId]);
-        $viagensSemana = $stmt->fetchColumn();
+        $stmt->execute([$userId]); $viagensSemana = $stmt->fetchColumn();
     } catch (PDOException $e) {}
 }
 
-// --- 5. JS VARS ---
-echo "<script> 
-    var viagens = " . json_encode($viagens) . ";
-    var currentDriverId = " . $_SESSION['user_id'] . ";
-</script>";
+echo "<script> var viagens = " . json_encode($viagens) . "; var currentDriverId = " . $_SESSION['user_id'] . "; </script>";
 ?>
 
 <!doctype html>
-<html lang="pt">
+<html lang="pt" data-bs-theme="light">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>Painel de Condutor</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Condutor | SyncRide</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/source-sans-3@5.0.12/index.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/overlayscrollbars@2.10.1/styles/overlayscrollbars.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-    <link rel="stylesheet" href="../../dist/css/adminlte.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
     
     <style>
-        /* ESTILOS GERAIS */
-        .card-header-custom { background: linear-gradient(90deg, #00b0ff, #7f00ff); color: white; border-radius: 12px 12px 0 0; text-align: center; padding: 15px; }
-        .filter-btn { transition: all 0.3s ease; background-color: transparent; border: 2px solid #ddd; color: #666; }
-        .filter-btn:hover { transform: scale(1.05); border-color: #00b0ff; color: #00b0ff; }
-        .filter-btn.active { background: linear-gradient(90deg, #00b0ff, #7f00ff); color: white; border: none; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); }
-        .profile-photo { width: 100px; height: 100px; object-fit: cover; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        
-        /* TIMELINE */
-        .route-timeline { position: relative; padding-left: 20px; border-left: 2px dashed #dee2e6; margin: 15px 0 25px 5px; }
-        .rt-item { position: relative; margin-bottom: 20px; }
-        .rt-item:last-child { margin-bottom: 0; }
-        .rt-dot { position: absolute; left: -26px; top: 2px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; }
-        .dot-green { background: #198754; box-shadow: 0 0 0 3px #d1e7dd; }
-        .dot-red { background: #dc3545; box-shadow: 0 0 0 3px #f8d7da; }
-
-        /* BOTÃO WHATSAPP */
-        .btn-whatsapp {
-            background-color: #25D366; color: white; border: none; 
-            border-radius: 10px; padding: 10px 15px; font-weight: bold;
-            box-shadow: 0 2px 4px rgba(37, 211, 102, 0.2); transition: transform 0.2s;
-            text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;
-            width: 100%;
+        /* --- DESIGN SYSTEM --- */
+        :root {
+            --font-primary: 'Inter', sans-serif;
+            --font-display: 'Poppins', sans-serif;
+            --bg-body: #f3f4f6;
+            --bg-card: #ffffff;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --primary-accent: #4f46e5;
+            --primary-hover: #4338ca;
+            --border-color: #e5e7eb;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+            --radius-md: 16px;
+            /* SAFE AREA VARIABLES */
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
         }
-        .btn-whatsapp:hover { background-color: #128C7E; color: white; transform: scale(1.02); }
 
-        /* BOTÃO DE AÇÃO DINÂMICO */
+        [data-bs-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f9fafb;
+            --text-muted: #94a3b8;
+            --primary-accent: #6366f1;
+            --primary-hover: #818cf8;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            padding-bottom: calc(80px + var(--safe-bottom));
+            padding-top: 0;
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        /* --- HEADER (Z-INDEX 1080 - SUPREMO) --- */
+        /* Colocámos 1080 para ficar ACIMA do overlay (1070) e do Modal (1055) */
+        .app-header {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            padding: calc(15px + var(--safe-top)) 20px 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            position: sticky; top: 0; 
+            z-index: 1080; 
+        }
+        .brand-logo { height: 30px; width: auto; }
+        .user-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-color); }
+
+        /* --- STAT CARDS --- */
+        .stat-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 15px;
+            display: flex; align-items: center; gap: 15px;
+            box-shadow: var(--shadow-sm);
+        }
+        .stat-icon {
+            width: 45px; height: 45px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem;
+        }
+        .bg-indigo-soft { background: rgba(79, 70, 229, 0.1); color: var(--primary-accent); }
+        .bg-emerald-soft { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+        .stat-info h3 { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; margin: 0; line-height: 1; }
+        .stat-info p { margin: 0; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* --- FILTER PILLS --- */
+        .filter-container {
+            background-color: var(--bg-card);
+            padding: 5px; border-radius: 50px;
+            display: flex; justify-content: space-between;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        .filter-btn {
+            flex: 1; text-align: center; padding: 8px 0;
+            border-radius: 50px; border: none; background: transparent;
+            color: var(--text-muted); font-size: 0.9rem; font-weight: 500;
+            transition: all 0.2s;
+        }
+        .filter-btn.active {
+            background-color: var(--primary-accent); color: white;
+            box-shadow: 0 2px 5px rgba(79, 70, 229, 0.3);
+        }
+
+        /* --- RIDE CARD --- */
+        .ride-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            margin-bottom: 15px;
+            padding: 16px;
+            position: relative;
+            transition: transform 0.1s;
+            box-shadow: var(--shadow-sm);
+        }
+        .ride-card:active { transform: scale(0.98); }
+        
+        .ride-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .ride-time { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--text-main); }
+        .ride-badge { font-size: 0.7rem; font-weight: 600; padding: 4px 10px; border-radius: 50px; text-transform: uppercase; }
+        .badge-private { background: rgba(79, 70, 229, 0.1); color: var(--primary-accent); border: 1px solid rgba(79, 70, 229, 0.2); }
+        .badge-shared { background: rgba(245, 158, 11, 0.1); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.2); }
+
+        .card-timeline { position: relative; padding-left: 20px; border-left: 2px dashed var(--border-color); margin-left: 6px; }
+        .ct-point { position: relative; margin-bottom: 15px; }
+        .ct-point:last-child { margin-bottom: 0; }
+        .ct-dot {
+            width: 12px; height: 12px; border-radius: 50%;
+            position: absolute; left: -27px; top: 4px;
+            border: 2px solid var(--bg-card);
+        }
+        .dot-pickup { background-color: #10b981; }
+        .dot-dropoff { background-color: #ef4444; }
+        .ct-text { font-size: 0.95rem; color: var(--text-main); line-height: 1.3; }
+
+        .price-tag {
+            position: absolute; bottom: 16px; right: 16px;
+            background-color: #10b981; color: white;
+            font-weight: 700; font-size: 0.85rem;
+            padding: 4px 10px; border-radius: 8px;
+            display: flex; align-items: center; gap: 4px;
+        }
+
+        /* --- MODAL STYLES (COMPACTED) --- */
+        .modal-content { background-color: var(--bg-card); border-radius: 24px; border: none; }
+        .modal-header { border-bottom: 1px solid var(--border-color); padding: 1rem 1.2rem; }
+        .modal-title { font-family: var(--font-display); font-weight: 700; color: var(--text-main); font-size: 1.1rem; }
+        .modal-body { padding: 1rem; }
+        
+        .info-box { background-color: var(--bg-body); border-radius: 12px; padding: 10px; border: 1px solid var(--border-color); margin-bottom: 8px; }
+        .info-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 2px; }
+        .info-value { font-size: 0.95rem; color: var(--text-main); font-weight: 600; line-height: 1.2; }
+
         .btn-dynamic-action {
-            width: 100%; padding: 15px; font-size: 1.2rem; font-weight: 800; border-radius: 12px;
-            text-transform: uppercase; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s ease;
-            border: none; color: white;
+            width: 100%; padding: 12px; font-size: 1rem; font-weight: 700; font-family: var(--font-display);
+            border-radius: 12px; border: none; color: white; text-transform: uppercase; letter-spacing: 0.5px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s; margin-bottom: 10px;
         }
-        .btn-dynamic-action:active { transform: scale(0.98); }
-        .status-btn-0 { background: linear-gradient(45deg, #0d6efd, #0a58ca); } 
-        .status-btn-1 { background: linear-gradient(45deg, #ffc107, #ffca2c); color: #000; } 
-        .status-btn-2 { background: linear-gradient(45deg, #198754, #157347); } 
-        .status-btn-3 { background: linear-gradient(45deg, #dc3545, #b02a37); animation: pulse-red 2s infinite; }
-        .status-btn-4 { background-color: #6c757d; cursor: not-allowed; opacity: 0.7; }
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+        .btn-dynamic-action:active { transform: scale(0.97); }
+        .status-btn-0 { background: var(--primary-accent); }
+        .status-btn-1 { background: #f59e0b; color: #fff; }
+        .status-btn-2 { background: #10b981; }
+        .status-btn-3 { background: #ef4444; }
+        .status-btn-4 { background: #6b7280; opacity: 0.7; }
+        .btn-whatsapp { background-color: #25D366; color: white; border: none; border-radius: 8px; padding: 8px; width: 100%; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; margin-top: 8px; font-size: 0.9rem;}
 
-        /* MODO AEROPORTO (FUNDO PRETO) */
+        .modal-timeline .ct-point { margin-bottom: 10px; }
+        .modal-timeline .ct-text { font-size: 0.9rem; }
+
+        /* --- BOTTOM NAV (Z-INDEX 1080 - SUPREMO) --- */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; width: 100%; 
+            height: calc(70px + var(--safe-bottom));
+            background-color: var(--bg-card); border-top: 1px solid var(--border-color);
+            display: flex; justify-content: space-around; align-items: flex-start;
+            z-index: 1080; 
+            padding-bottom: var(--safe-bottom);
+            padding-top: 10px;
+        }
+        .nav-item-mobile {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--text-muted); text-decoration: none; font-size: 0.75rem; font-weight: 500;
+            width: 100%; height: 50px; transition: color 0.2s;
+        }
+        .nav-item-mobile i { font-size: 1.5rem; margin-bottom: 4px; }
+        .nav-item-mobile.active { color: var(--primary-accent); }
+
+        /* --- AIRPORT OVERLAY --- */
+        /* Z-INDEX 1070: Acima do Modal (1055) mas abaixo do Header/Nav (1080) */
         #airportOverlay { 
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+            position: fixed; top: 0; left: 0; 
+            width: 100%; height: 100%; 
             background: #000; 
-            z-index: 99999; display: none; flex-direction: column; align-items: center; justify-content: center; 
-            text-align: center; padding: 5px; 
-        }
-        #airportClientName { 
-            color: #fff; 
-            font-weight: 900; 
-            line-height: 1; 
-            text-transform: uppercase; 
-            margin: 0; 
-            font-size: 22vw; /* NOME GIGANTE */
-            width: 100%;
-            word-break: break-word; 
-            font-family: 'Arial Black', 'Helvetica Black', sans-serif;
-        }
-        .airport-controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 20px; z-index: 100001; }
-        .airport-icon { color: #fff; font-size: 2.5rem; cursor: pointer; opacity: 0.5; }
-        .airport-icon:hover { opacity: 1; }
-        .rotate-mode .content-wrapper { transform: rotate(90deg); width: 100vh; height: 100vw; display:flex; justify-content:center; align-items:center; }
-
-        /* MODO CÂMERA FULL SCREEN */
-        #cameraOverlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 99999; 
-            display: none; flex-direction: column;
-        }
-        #cameraViewArea {
-            position: relative; flex: 1; width: 100%; overflow: hidden; background: #000;
-        }
-        #cameraStream, #photoCanvas {
-            width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;
-        }
-        .camera-ui-controls {
-            position: absolute; bottom: 0; left: 0; width: 100%; 
-            padding: 30px 10px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            display: flex; flex-direction: column; align-items: center; gap: 15px;
-        }
-        .camera-title {
-            position: absolute; top: 20px; left: 0; width: 100%; text-align: center;
-            color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); z-index: 10;
-            font-size: 1.2rem; font-weight: 600; pointer-events: none;
-        }
-        #cameraLoading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; text-align: center; display: none; z-index: 5;
+            z-index: 1070; 
+            display: none; 
+            overflow: hidden; 
+            
+            /* PADDING AJUSTADO PARA O NOME NÃO FICAR FULLSCREEN */
+            /* Compensa o Header (~76px) e Footer (~80px) */
+            padding-top: calc(76px + var(--safe-top));
+            padding-bottom: calc(85px + var(--safe-bottom));
+            box-sizing: border-box; /* Garante que o padding não aumenta a width */
         }
 
-        /* MENUS */
-        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; height: 65px; background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; justify-content: space-around; align-items: center; z-index: 1000; border-top: 1px solid #eee; }
-        .nav-item-mobile { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #adb5bd; text-decoration: none; font-size: 0.75rem; width: 100%; height: 100%; }
-        .nav-item-mobile i { font-size: 1.4rem; margin-bottom: 2px; }
-        .nav-item-mobile.active { color: #00b0ff; font-weight: 600; }
-        .app-content { padding-bottom: 80px; }
+        #airportContentWrapper {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column; 
+            align-items: center; justify-content: center;
+            transition: transform 0.3s ease;
+        }
+
+        #airportOverlay.landscape-mode {
+             /* Em paisagem, removemos o padding vertical porque vai rodar */
+             padding-top: 0; padding-bottom: 0;
+        }
+
+        #airportOverlay.landscape-mode #airportContentWrapper {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 100vh; height: 100vw;
+            transform: translate(-50%, -50%) rotate(90deg);
+        }
         
-        /* User Menu Override para AdminLTE */
-        .user-menu .dropdown-menu { width: 280px; padding: 0; border: 0; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
-        .user-menu .user-header { height: 175px; padding: 10px; text-align: center; }
-        .user-menu .user-header img { z-index: 5; height: 90px; width: 90px; border: 3px solid; border-color: transparent; border-color: rgba(255,255,255,.2); }
-        .user-menu .user-header p { z-index: 5; color: #fff; color: rgba(255,255,255,.8); font-size: 17px; margin-top: 10px; }
-        .user-menu .user-footer { background-color: #f8f9fa; padding: 10px; }
+        #airportClientName { 
+            color: #fff; font-weight: 900; line-height: 1.1; 
+            text-transform: uppercase; font-family: sans-serif; word-break: break-word; 
+            text-align: center; width: 100%; padding: 0 20px;
+            font-size: 10vw; 
+        }
+        
+        /* --- CAMERA OVERLAY (Z-INDEX 99999 - TOTAL) --- */
+        #cameraOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 99999; display: none; flex-direction: column; }
+        #cameraViewArea { flex: 1; position: relative; overflow: hidden; background: #000; }
+        #cameraStream, #photoCanvas { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+        .camera-ui-controls { position: absolute; bottom: 0; left: 0; width: 100%; padding: 40px 20px calc(40px + var(--safe-bottom)) 20px; background: linear-gradient(to top, #000, transparent); display: flex; justify-content: center; gap: 20px; align-items: center; }
+        .camera-btn { width: 70px; height: 70px; border-radius: 50%; border: 4px solid white; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .camera-btn-inner { width: 56px; height: 56px; background: white; border-radius: 50%; transition: transform 0.1s; }
+        .camera-btn:active .camera-btn-inner { transform: scale(0.9); }
+        .btn-circle-action { width: 50px; height: 50px; border-radius: 50%; border: none; background: rgba(255,255,255,0.2); color: white; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+
     </style>
   </head>
-  <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+  <body>
     
     <div id="airportOverlay">
-        <div class="airport-controls">
-            <i class="bi bi-arrow-repeat airport-icon" id="rotateScreenBtn" title="Rodar Ecrã"></i>
-            <i class="bi bi-x-circle-fill airport-icon" id="closeAirportMode" title="Fechar"></i>
+        <div style="position: absolute; top: calc(90px + var(--safe-top)); right: 20px; z-index: 100002; display: flex; gap: 20px;">
+            <i class="bi bi-arrow-repeat text-white fs-1" id="rotateScreenBtn" style="cursor: pointer;"></i>
+            <i class="bi bi-x-lg text-white fs-1" id="closeAirportMode" style="cursor: pointer;"></i>
         </div>
-        <div class="content-wrapper w-100 h-100 d-flex flex-column align-items-center justify-content: center">
+
+        <div id="airportContentWrapper">
             <h1 id="airportClientName">NOME</h1>
-            <h2 id="airportFlight" class="mt-4 text-white fs-1"></h2>
+            <h2 id="airportFlight" class="mt-4 text-white fs-2 text-center"></h2>
         </div>
     </div>
 
     <div id="cameraOverlay">
-        <div class="camera-title" id="cameraInstruction">Fotografar</div>
-        
+        <div style="position: absolute; top: max(20px, env(safe-area-inset-top)); left: 0; width: 100%; text-align: center; color: white; z-index: 10; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.8);" id="cameraInstruction">Fotografar</div>
         <div id="cameraViewArea">
-            <div id="cameraLoading">
-                <div class="spinner-border text-light mb-2" role="status"></div>
-                <div>A iniciar câmara...</div>
+            <div id="cameraLoading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: white; display: none;">
+                <div class="spinner-border mb-2"></div><div>A iniciar...</div>
             </div>
             <video id="cameraStream" autoplay playsinline></video>
             <canvas id="photoCanvas" style="display: none;"></canvas>
         </div>
-
         <div class="camera-ui-controls">
-            
-            <div id="stepCaptureControls" class="d-flex w-100 justify-content-center align-items-center gap-4">
-                <button class="btn btn-light rounded-circle p-3 shadow" onclick="closeCameraOverlay()" style="width: 50px; height: 50px; opacity: 0.8;">
-                    <i class="bi bi-x-lg text-dark fs-5"></i>
-                </button>
-                <button class="btn btn-light rounded-circle p-1 border-4 border-white shadow" id="btnCapture" style="width: 80px; height: 80px;">
-                    <div class="bg-danger rounded-circle w-100 h-100"></div>
-                </button>
-                <button class="btn btn-light rounded-circle p-3 shadow" id="btnRotateCamera" style="width: 50px; height: 50px; opacity: 0.8;">
-                    <i class="bi bi-arrow-repeat text-dark fs-4"></i>
-                </button>
+            <div id="stepCaptureControls" class="d-flex align-items-center gap-4">
+                <button class="btn-circle-action" onclick="closeCameraOverlay()"><i class="bi bi-x-lg"></i></button>
+                <button class="camera-btn" id="btnCapture"><div class="camera-btn-inner"></div></button>
+                <button class="btn-circle-action" id="btnRotateCamera"><i class="bi bi-arrow-repeat"></i></button>
             </div>
-
-            <div id="stepConfirmControls" class="d-none w-100 justify-content-center align-items-center gap-3">
-                <button class="btn btn-warning rounded-pill px-4 py-3 fw-bold shadow" id="btnRetake" style="min-width: 120px;">
-                    <i class="bi bi-arrow-counterclockwise me-2"></i> Repetir
-                </button>
-                <button class="btn btn-success rounded-pill px-4 py-3 fw-bold shadow" id="btnConfirmSend" style="min-width: 120px;">
-                    <i class="bi bi-send-fill me-2"></i> Enviar
-                </button>
+            <div id="stepConfirmControls" class="d-none d-flex gap-3 w-100 justify-content-center">
+                <button class="btn btn-light rounded-pill px-4 py-2 fw-bold" id="btnRetake">Repetir</button>
+                <button class="btn btn-primary rounded-pill px-4 py-2 fw-bold" id="btnConfirmSend">Enviar</button>
             </div>
-
         </div>
     </div>
 
-    <div class="app-wrapper">
-      
-      <nav class="app-header navbar navbar-expand bg-body">
-        <div class="container-fluid">
-          <ul class="navbar-nav"><li class="nav-item"><a class="nav-link" data-lte-toggle="sidebar" href="#"><i class="bi bi-list"></i></a></li></ul>
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item dropdown user-menu">
-              <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
-                <img src="<?php echo $userPhotoPath; ?>" class="user-image rounded-circle shadow" alt="User Image">
-                <span class="d-none d-md-inline"><?php echo $userName; ?></span>
-              </a>
-              <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
-                <li class="user-header text-bg-primary">
-                  <img src="<?php echo $userPhotoPath; ?>" class="rounded-circle shadow" alt="User Image">
-                  <p><?php echo $userName; ?><small>Condutor SyncRide</small></p>
-                </li>
-                <li class="user-footer">
-                  <a href="#" class="btn btn-default btn-flat" data-bs-toggle="modal" data-bs-target="#photoModal">Perfil</a>
-                  <a href="logout.php" class="btn btn-default btn-flat float-end">Sair</a>
-                </li>
-              </ul>
-            </li>
-          </ul>
+    <header class="app-header">
+        <img src="../../../assets/images/icons/Syncride.png" alt="SyncRide" class="brand-logo" id="header-logo">
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-link text-muted p-0" id="theme-toggle"><i class="bi bi-moon-stars-fill fs-5" id="theme-icon"></i></button>
+            <img src="<?php echo $userPhotoPath; ?>" class="user-avatar shadow-sm" alt="User" data-bs-toggle="modal" data-bs-target="#photoModal">
         </div>
-      </nav>
+    </header>
 
-      <main class="app-main">
-        <div class="app-content-header">
-          <div class="container-fluid">
-            <div class="row">
-              <div class="col-sm-6"><h3 class="mb-0">Painel de Condutor</h3></div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="app-content">
-          <div class="container-fluid">
-            
-            <div class="row mb-3">
-              <div class="col-6">
-                  <div class="small-box text-bg-primary shadow-sm mb-0">
-                      <div class="inner"><h3><?php echo $viagensHoje; ?></h3><p>Hoje</p></div>
-                      <div class="small-box-icon"><i class="bi bi-calendar-day"></i></div>
-                  </div>
-              </div>
-              <div class="col-6">
-                  <div class="small-box text-bg-success shadow-sm mb-0">
-                      <div class="inner"><h3><?php echo $viagensSemana; ?></h3><p>Semana</p></div>
-                      <div class="small-box-icon"><i class="bi bi-calendar-week"></i></div>
-                  </div>
-              </div>
-            </div>
-
-            <div class="card mb-4 shadow-lg border-0 rounded-4">
-                <div class="card-header-custom">
-                    <h3 class="card-title fw-bold mb-0">Viagens</h3>
+    <div class="container-fluid px-3 pt-3">
+        <div class="mb-4">
+            <h4 class="fw-bold mb-3 text-main">Olá, <?php echo explode(' ', trim($userName))[0]; ?>! 👋</h4>
+            <div class="row g-3">
+                <div class="col-6">
+                    <div class="stat-card">
+                        <div class="stat-icon bg-indigo-soft"><i class="bi bi-calendar-check"></i></div>
+                        <div class="stat-info">
+                            <h3><?php echo $viagensHoje; ?></h3>
+                            <p>Hoje</p>
+                        </div>
+                    </div>
                 </div>
-
-                <div class="d-flex justify-content-center gap-3 p-3 bg-light border-bottom">
-                    <button class="btn btn-sm rounded-pill px-4 filter-btn" data-filter="yesterday">Ontem</button>
-                    <button class="btn btn-sm rounded-pill px-4 filter-btn active" data-filter="today">Hoje</button>
-                    <button class="btn btn-sm rounded-pill px-4 filter-btn" data-filter="tomorrow">Amanhã</button>
-                </div>
-
-                <div class="card-body p-3 bg-light">
-                    <div class="list-group">
-                        <p class="text-center text-muted py-5">A carregar viagens...</p>
+                <div class="col-6">
+                    <div class="stat-card">
+                        <div class="stat-icon bg-emerald-soft"><i class="bi bi-calendar-week"></i></div>
+                        <div class="stat-info">
+                            <h3><?php echo $viagensSemana; ?></h3>
+                            <p>Semana</p>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="modal fade" id="detailsModal" tabindex="-1" data-bs-backdrop="static">
-              <div class="modal-dialog modal-dialog-centered modal-lg">
-                <div class="modal-content shadow-lg border-0" style="border-radius: 20px;">
-                  
-                  <div class="modal-header bg-white border-bottom-0 pb-0">
+        <div class="filter-container">
+            <button class="filter-btn" data-filter="yesterday">Ontem</button>
+            <button class="filter-btn active" data-filter="today">Hoje</button>
+            <button class="filter-btn" data-filter="tomorrow">Amanhã</button>
+        </div>
+
+        <div id="rideList">
+            <div class="text-center py-5 text-muted">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="mt-2 small">A carregar viagens...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="detailsModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
                     <div>
-                        <h5 class="modal-title fw-bold">Detalhes do Serviço</h5>
-                        <small class="text-muted">ID: #<span id="modalIdDisplay"></span></small>
+                        <h5 class="modal-title">Detalhes</h5>
+                        <small class="text-muted">ID #<span id="modalIdDisplay"></span></small>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                  </div>
-                  
-                  <div class="modal-body p-4 pt-2">
-                    
-                    <div class="bg-light p-3 rounded-3 border mb-3 mt-2">
-                        <div class="d-flex align-items-center mb-2">
-                            <div class="bg-white p-2 rounded-circle me-3 shadow-sm">
-                                <i class="bi bi-person-fill fs-3 text-primary"></i>
-                            </div>
-                            <div class="w-100">
-                                <div class="text-muted small text-uppercase fw-bold">Cliente</div>
-                                <div id="modalClient" class="fw-bold text-dark fs-5"></div>
-                                <div id="modalClientNumber" class="text-muted small"></div>
-                                <div id="whatsappContainer" class="mt-2" style="display:none;"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div id="priceAlertContainer" style="display:none;">
-                        <div class="alert alert-success border-0 shadow-sm d-flex align-items-center justify-content-between p-3 mb-3" role="alert" style="border-radius: 12px; background: linear-gradient(45deg, #198754, #20c997); color: white;">
-                            <div class="d-flex align-items-center">
-                                <div class="bg-white text-success rounded-circle p-2 me-3 d-flex align-items-center justify-content-center" style="width: 45px; height: 45px;">
-                                    <i class="bi bi-cash-coin fs-3"></i>
-                                </div>
+                </div>
+                <div class="modal-body">
+                    <div class="info-box d-flex align-items-start gap-3">
+                         <div class="bg-body-secondary rounded-circle p-2 mt-1"><i class="bi bi-person-fill fs-5 text-primary"></i></div>
+                         <div class="flex-grow-1">
+                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
-                                    <small class="d-block text-uppercase opacity-75 fw-bold" style="font-size: 0.7rem;">Cobrar ao Cliente</small>
-                                    <span class="fs-2 fw-bold" id="modalPriceDisplay">0.00€</span>
+                                    <span class="info-label">Cliente</span>
+                                    <div id="modalClient" class="info-value text-break"></div>
                                 </div>
-                            </div>
-                            <i class="bi bi-exclamation-circle-fill fs-4 opacity-50"></i>
+                                <div class="text-end">
+                                     <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill px-2" id="modalPaxBadge">
+                                        <i class="bi bi-people-fill"></i> <span id="modalADT"></span>+<span id="modalCHD"></span>
+                                     </span>
+                                </div>
+                             </div>
+                             <div class="d-flex justify-content-between align-items-end mt-1">
+                                 <div id="modalClientNumber" class="small text-muted"></div>
+                                 <div id="priceBadgeContainer" class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 rounded-pill px-2" style="display:none;">
+                                    <span id="modalPriceDisplay"></span>
+                                 </div>
+                             </div>
+                             <div id="whatsappContainer" style="display:none;"></div>
+                         </div>
+                    </div>
+
+                    <div class="row g-2 mb-2">
+                        <div class="col-6"><button class="btn btn-sm btn-dark w-100 py-2 rounded-3 fw-bold" id="btnAirportMode"><i class="bi bi-signpost-2-fill me-1"></i> Placa</button></div>
+                        <div class="col-6"><a href="#" id="trackFlightLink" target="_blank" class="btn btn-sm btn-info w-100 py-2 rounded-3 fw-bold text-white" style="display:none;"><i class="bi bi-airplane-fill me-1"></i> <span id="modalFlight"></span></a></div>
+                    </div>
+
+                    <div class="card p-2 border border-color shadow-none mb-3">
+                        <div class="card-timeline modal-timeline" style="margin-left: 0; padding-left: 20px;">
+                            <div class="ct-point"><div class="ct-dot dot-pickup"></div><span class="ct-label info-label">Recolha</span><div id="modalPickup" class="ct-text fw-bold lh-sm"></div></div>
+                            <div class="ct-point mb-0"><div class="ct-dot dot-dropoff"></div><span class="ct-label info-label">Entrega</span><div id="modalDropoff" class="ct-text fw-bold lh-sm"></div></div>
                         </div>
                     </div>
 
-                    <button class="btn btn-dark w-100 mb-3 fw-bold shadow-sm" id="btnAirportMode" style="border-radius: 10px;">
-                        <i class="bi bi-signpost-2-fill me-2"></i> MODO AEROPORTO
-                    </button>
-
-                    <div class="route-timeline">
-                        <div class="rt-item">
-                            <div class="rt-dot dot-green"></div>
-                            <small class="text-muted fw-bold text-uppercase" style="font-size: 0.65rem;">Recolha</small>
-                            <div id="modalPickup" class="fw-bold text-dark lh-sm"></div>
-                        </div>
-                        <div class="rt-item mt-3">
-                            <div class="rt-dot dot-red"></div>
-                            <small class="text-muted fw-bold text-uppercase" style="font-size: 0.65rem;">Entrega</small>
-                            <div id="modalDropoff" class="fw-bold text-dark lh-sm"></div>
-                        </div>
-                    </div>
+                    <button id="btnDynamicAction" class="btn-dynamic-action status-btn-0">INICIAR RECOLHA</button>
                     
-                    <div class="d-flex justify-content-between mb-3 gap-2">
-                        <div class="bg-white border rounded p-2 w-50 text-center shadow-sm">
-                            <span class="d-block text-muted small fw-bold text-uppercase">Adultos</span>
-                            <span class="fs-5 fw-bold text-dark" id="modalADT">0</span>
-                        </div>
-                        <div class="bg-white border rounded p-2 w-50 text-center shadow-sm">
-                            <span class="d-block text-muted small fw-bold text-uppercase">Crianças</span>
-                            <span class="fs-5 fw-bold text-dark" id="modalCHD">0</span>
-                        </div>
-                    </div>
-                    
-                    <div id="flightSection" class="alert alert-info border-0 d-flex align-items-center justify-content-between py-2 mb-3" style="display: none;">
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-airplane-engines-fill me-2 fs-5"></i>
-                            <div>
-                                <small class="d-block lh-1 opacity-75">Voo</small>
-                                <strong id="modalFlight" class="fs-6"></strong>
-                            </div>
-                        </div>
-                        <a href="#" id="trackFlightLink" target="_blank" class="btn btn-sm btn-light text-primary fw-bold rounded-pill px-3 ms-auto">
-                            Rastrear
-                        </a>
-                    </div>
-
-                    <hr>
-                    <div class="d-grid gap-2 mb-3">
-                        <button id="btnDynamicAction" class="btn-dynamic-action status-btn-0">
-                            <i class="bi bi-car-front-fill me-2"></i> INICIAR RECOLHA
-                        </button>
-                    </div>
-
                     <div class="row g-2">
-                        <div class="col-6">
-                            <button class="btn btn-outline-secondary w-100 py-2" id="uploadVoucher">
-                                <i class="bi bi-ticket-perforated"></i> Voucher
-                            </button>
-                        </div>
-                        <div class="col-6">
-                            <button class="btn btn-outline-danger w-100 py-2" id="uploadNoShow">
-                                <i class="bi bi-camera"></i> No-Show
-                            </button>
-                        </div>
+                        <div class="col-6"><button class="btn btn-sm btn-outline-secondary w-100 py-2 rounded-pill fw-bold" id="uploadVoucher"><i class="bi bi-ticket-perforated"></i> Voucher</button></div>
+                        <div class="col-6"><button class="btn btn-sm btn-outline-danger w-100 py-2 rounded-pill fw-bold" id="uploadNoShow"><i class="bi bi-camera"></i> No-Show</button></div>
                     </div>
-
-                  </div>
                 </div>
-              </div>
             </div>
-
-            <div class="modal fade" id="photoModal" tabindex="-1">
-              <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content border-0 rounded-4 shadow-lg">
-                  <form action="../../../save_profile_photo.php" method="POST" enctype="multipart/form-data">
-                      <div class="modal-header py-3 border-bottom-0">
-                        <h5 class="modal-title fw-bold">Gerir Foto</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                      </div>
-                      <div class="modal-body px-4 pb-4 pt-0 text-center">
-                        <div class="mb-4"><img id="currentProfilePhoto" src="<?php echo $userPhotoPath; ?>" class="profile-photo"></div>
-                        <input type="file" name="profile_photo" id="profilePhotoInput" class="form-control" accept="image/*" required>
-                      </div>
-                      <div class="modal-footer border-0 px-4 pb-4 pt-0">
-                        <button type="submit" class="btn btn-primary rounded-pill px-5 fw-bold">Guardar</button>
-                      </div>
-                  </form>
-                </div>
-              </div>
-            </div>
-
-          </div>
         </div>
-      </main>
-      
-      <footer class="app-footer">SyncRide All rights reserved.</footer>
-
-      <nav class="bottom-nav d-flex d-md-none">
-          <a href="driver.php" class="nav-item-mobile active"><i class="bi bi-car-front-fill"></i><span>Viagens</span></a>
-          <a href="driver_agenda.php" class="nav-item-mobile"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
-          <a href="#" class="nav-item-mobile" data-bs-toggle="modal" data-bs-target="#photoModal"><i class="bi bi-person-circle"></i><span>Perfil</span></a>
-          <a href="logout.php" class="nav-item-mobile text-danger"><i class="bi bi-box-arrow-right"></i><span>Sair</span></a>
-      </nav>
-
     </div>
-    
+
+    <div class="modal fade" id="photoModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0"><h5 class="modal-title">Foto de Perfil</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body text-center">
+                    <form action="../../../save_profile_photo.php" method="POST" enctype="multipart/form-data">
+                        <img id="currentProfilePhoto" src="<?php echo $userPhotoPath; ?>" class="rounded-circle shadow mb-4" style="width: 120px; height: 120px; object-fit: cover;">
+                        <input type="file" name="profile_photo" id="profilePhotoInput" class="form-control mb-3" accept="image/*" required>
+                        <button type="submit" class="btn btn-primary rounded-pill w-100 py-2 fw-bold">Guardar Alteração</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="bottom-nav">
+        <a href="driver.php" class="nav-item-mobile active"><i class="bi bi-car-front-fill"></i><span>Viagens</span></a>
+        <a href="driver_agenda.php" class="nav-item-mobile"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
+        <a href="driverstats.php" class="nav-item-mobile"><i class="bi bi-bar-chart-fill"></i><span>Stats</span></a>
+        <a href="logout.php" class="nav-item-mobile text-danger"><i class="bi bi-box-arrow-right"></i><span>Sair</span></a>
+    </nav>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../../dist/js/adminlte.js"></script>
-    
+
     <script>
-        // --- VARIÁVEIS GLOBAIS ---
-        let backgroundWatcherId = null;
-        let trackingInterval = null;
-        let currentRideId = null;
-        let currentRideData = null;
-        let localTripStatus = {};
-        
-        let currentFilter = "today"; 
+        // --- 1. DARK MODE & LOGO ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const htmlElement = document.documentElement;
+        const headerLogo = document.getElementById('header-logo');
+        const logoDark = "../../../assets/images/icons/Syncride.png"; 
+        const logoLight = "../../../assets/images/icons/Syncridewhite.png";
 
-        // Variáveis para a Câmara e GPS
-        let stream = null; 
-        let currentMode = 'noshow';
-        let currentFacingMode = 'environment'; 
-        let locationWatcher = null; 
-        let currentLat = null;
-        let currentLng = null;
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        htmlElement.setAttribute('data-bs-theme', savedTheme);
+        updateThemeIcon(savedTheme); updateLogo(savedTheme);
 
-        // Inicializar estados
-        if (typeof viagens !== 'undefined') {
-            viagens.forEach(v => {
-                localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0;
-            });
-        }
+        themeToggle.addEventListener('click', () => {
+            const newTheme = htmlElement.getAttribute('data-bs-theme') === 'light' ? 'dark' : 'light';
+            htmlElement.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme); updateLogo(newTheme);
+        });
+        function updateThemeIcon(theme) { themeIcon.className = theme === 'light' ? 'bi bi-moon-stars-fill fs-5' : 'bi bi-sun-fill fs-5'; }
+        function updateLogo(theme) { if(headerLogo) headerLogo.src = theme === 'dark' ? logoLight : logoDark; }
 
-        // --- AUTO REFRESH (API POLLING) ---
+        // --- 2. GLOBAL VARS ---
+        let backgroundWatcherId = null; let trackingInterval = null; let currentRideId = null; let currentRideData = null;
+        let localTripStatus = {}; let currentFilter = "today"; let stream = null; let currentMode = 'noshow';
+        let currentFacingMode = 'environment'; let locationWatcher = null; let currentLat = null; let currentLng = null;
+
+        if (typeof viagens !== 'undefined') { viagens.forEach(v => { localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0; }); }
+
+        // --- 3. AUTO REFRESH ---
         function fetchLatestRides() {
-            fetch('driver.php?api=refresh')
-                .then(response => response.json())
-                .then(data => {
-                    if (Array.isArray(data)) {
-                        viagens = data;
-                        viagens.forEach(v => {
-                            if (localTripStatus[v.ServiceID] === undefined) {
-                                localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0;
-                            }
-                        });
-                        filterTrips(currentFilter);
-                    }
-                })
-                .catch(err => console.log('Auto-refresh error:', err));
+            fetch('driver.php?api=refresh').then(r => r.json()).then(data => {
+                if (Array.isArray(data)) {
+                    viagens = data;
+                    viagens.forEach(v => { if (localTripStatus[v.ServiceID] === undefined) localTripStatus[v.ServiceID] = parseInt(v.status_id) || 0; });
+                    filterTrips(currentFilter);
+                }
+            }).catch(err => console.log(err));
         }
-
-        // Atualiza a cada 15 segundos
         setInterval(fetchLatestRides, 15000);
 
-        // --- GPS DE FUNDO (TRACKING) ---
+        // --- 4. GPS & LOGIC ---
         function sendPosition(position) {
             if(!currentRideId) return;
-            const lat = position.latitude || position.coords?.latitude;
-            const lng = position.longitude || position.coords?.longitude;
-            const speed = position.speed || position.coords?.speed;
-            const heading = position.bearing || position.coords?.heading;
-            
-            if (lat === undefined || lng === undefined) {
-                if (window.Capacitor?.Plugins?.BackgroundGeolocation) Capacitor.Plugins.BackgroundGeolocation.finish(); 
-                return;
-            }
-
-            const payload = {
-                ride_id: currentRideId,
-                driver_id: <?php echo $_SESSION['user_id'] ?? 0; ?>,
-                lat: lat, lng: lng, speed: speed, heading: heading
-            };
-            
-            fetch('../../../Includes/dist/pages/api_update_location.php', {
-                method: 'POST', body: JSON.stringify(payload), headers: {'Content-Type': 'application/json'}
-            }).catch(e => console.log("Erro GPS: ", e));
-
+            const lat = position.latitude || position.coords?.latitude; const lng = position.longitude || position.coords?.longitude;
+            if (lat === undefined || lng === undefined) { if (window.Capacitor?.Plugins?.BackgroundGeolocation) Capacitor.Plugins.BackgroundGeolocation.finish(); return; }
+            const payload = { ride_id: currentRideId, driver_id: <?php echo $_SESSION['user_id'] ?? 0; ?>, lat: lat, lng: lng };
+            fetch('../../../Includes/dist/pages/api_update_location.php', { method: 'POST', body: JSON.stringify(payload), headers: {'Content-Type': 'application/json'} }).catch(e => console.log(e));
             if (window.Capacitor?.Plugins?.BackgroundGeolocation) Capacitor.Plugins.BackgroundGeolocation.finish(); 
         }
-        
         function startLiveTracking(rideId) {
-            currentRideId = rideId;
-            
-            if (window.Capacitor?.Plugins?.BackgroundGeolocation) {
-                if (backgroundWatcherId) return;
-                Capacitor.Plugins.BackgroundGeolocation.addWatcher({
-                    interval: 5, fastestInterval: 2, distanceFilter: 10, desiredAccuracy: 10,
-                    stopOnTerminate: false, notificationTitle: 'SyncRide', notificationText: 'Viagem em curso.'
-                }, sendPosition).then(id => { backgroundWatcherId = id; });
-            } else if ("geolocation" in navigator) {
-                if(trackingInterval) clearInterval(trackingInterval); 
-                navigator.geolocation.getCurrentPosition(pos => sendPosition(pos));
-                trackingInterval = setInterval(() => { navigator.geolocation.getCurrentPosition(pos => sendPosition(pos)); }, 5000);
-            }
-        }
+    currentRideId = rideId;
+    
+    if (window.Capacitor?.Plugins?.BackgroundGeolocation) {
+        const BGeo = Capacitor.Plugins.BackgroundGeolocation;
         
+        if (backgroundWatcherId) return;
+
+        // Configuração robusta para iOS e Android
+        BGeo.addWatcher({
+            backgroundTitle: "SyncRide em Serviço",
+            backgroundMessage: "A sua localização está a ser partilhada",
+            requestAllowAlwaysLocation: true, // Crucial para iOS abrir o popup de "Sempre"
+            distanceFilter: 10,               // Apenas envia se mover 10 metros (evita spam e poupa bateria)
+            staleLocationThreshold: 30,
+            radius: 20
+        }, (location, error) => {
+            if (error) {
+                console.error("Erro GPS:", error);
+                return;
+            }
+            if (location) {
+                sendPosition(location);
+            }
+        }).then(id => { 
+            backgroundWatcherId = id;
+            console.log("Watcher iniciado:", id);
+        });
+
+    } else if ("geolocation" in navigator) {
+        // ... manter a tua lógica de fallback para browser ...
+        if(trackingInterval) clearInterval(trackingInterval); 
+        navigator.geolocation.getCurrentPosition(pos => sendPosition(pos));
+        trackingInterval = setInterval(() => { 
+            navigator.geolocation.getCurrentPosition(pos => sendPosition(pos)); 
+        }, 5000);
+    }
+}
         function stopLiveTracking() {
             if(!currentRideId) return;
-            fetch('api_stop_tracking.php', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ ride_id: currentRideId })
-            });
+            fetch('api_stop_tracking.php', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ride_id: currentRideId }) });
             currentRideId = null;
-            if (window.Capacitor?.Plugins?.BackgroundGeolocation && backgroundWatcherId) {
-                Capacitor.Plugins.BackgroundGeolocation.removeWatcher({ id: backgroundWatcherId });
-                backgroundWatcherId = null;
-            } 
+            if (window.Capacitor?.Plugins?.BackgroundGeolocation && backgroundWatcherId) { Capacitor.Plugins.BackgroundGeolocation.removeWatcher({ id: backgroundWatcherId }); backgroundWatcherId = null; } 
             if(trackingInterval) { clearInterval(trackingInterval); trackingInterval = null; }
         }
-
-        function requestAppPermissions() {
-            if (window.Capacitor?.isNativePlatform()) {
-                const { Geolocation, Camera, BackgroundGeolocation } = Capacitor.Plugins;
-                Geolocation.requestPermissions(); 
-                Camera.requestPermissions(); 
-                BackgroundGeolocation.requestPermissions();
-            }
+        document.addEventListener('DOMContentLoaded', async () => {
+    if (window.Capacitor?.isNativePlatform()) {
+        const { Geolocation, Camera, BackgroundGeolocation } = Capacitor.Plugins;
+        
+        // 1. Pede primeiro permissões normais (Foreground)
+        await Geolocation.requestPermissions();
+        await Camera.requestPermissions();
+        
+        // 2. TENTA pedir a de Background isoladamente
+        // Isto prepara o terreno, mas o popup de "Sempre" muitas vezes só 
+        // aparece na SEGUNDA vez que a app corre ou quando o Watcher inicia.
+        if (BackgroundGeolocation.requestPermissions) {
+            await BackgroundGeolocation.requestPermissions();
         }
-        document.addEventListener('DOMContentLoaded', requestAppPermissions);
+    }
+});
 
-        // --- FUNÇÕES DE INTERFACE ---
-
-        function openWaze(address) {
-            // PROTOCOLO SEM FALHAS: waze://
-            const dest = encodeURIComponent(address);
-            window.location.href = "waze://?q=" + dest + "&navigate=yes";
-        }
-
+        // --- 5. UI HELPERS ---
+        function openWaze(address) { window.location.href = "waze://?q=" + encodeURIComponent(address) + "&navigate=yes"; }
         function updateButtonUI(status) {
-            const btn = document.getElementById('btnDynamicAction');
-            if(!btn) return;
+            const btn = document.getElementById('btnDynamicAction'); if(!btn) return;
             btn.className = 'btn-dynamic-action'; 
-            
             switch(parseInt(status)) {
-                case 0:
-                    btn.classList.add('status-btn-0');
-                    btn.innerHTML = '<i class="bi bi-car-front-fill me-2"></i> INICIAR RECOLHA';
-                    btn.disabled = false;
-                    break;
-                case 1:
-                    btn.classList.add('status-btn-1');
-                    btn.innerHTML = '<i class="bi bi-geo-alt-fill me-2"></i> CHEGUEI AO PONTO';
-                    btn.disabled = false;
-                    break;
-                case 2:
-                    btn.classList.add('status-btn-2');
-                    btn.innerHTML = '<i class="bi bi-play-circle-fill me-2"></i> INICIAR VIAGEM';
-                    btn.disabled = false;
-                    break;
-                case 3:
-                    btn.classList.add('status-btn-3');
-                    btn.innerHTML = '<i class="bi bi-stop-circle-fill me-2"></i> TERMINAR VIAGEM';
-                    btn.disabled = false;
-                    break;
-                default:
-                    btn.classList.add('status-btn-4');
-                    btn.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i> VIAGEM CONCLUÍDA';
-                    btn.disabled = true;
+                case 0: btn.classList.add('status-btn-0'); btn.innerHTML = '<i class="bi bi-car-front-fill me-2"></i> INICIAR RECOLHA'; btn.disabled = false; break;
+                case 1: btn.classList.add('status-btn-1'); btn.innerHTML = '<i class="bi bi-geo-alt-fill me-2"></i> CHEGUEI'; btn.disabled = false; break;
+                case 2: btn.classList.add('status-btn-2'); btn.innerHTML = '<i class="bi bi-play-circle-fill me-2"></i> INICIAR VIAGEM'; btn.disabled = false; break;
+                case 3: btn.classList.add('status-btn-3'); btn.innerHTML = '<i class="bi bi-stop-circle-fill me-2"></i> TERMINAR'; btn.disabled = false; break;
+                default: btn.classList.add('status-btn-4'); btn.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i> CONCLUÍDA'; btn.disabled = true;
             }
         }
-
         function updateStatusBackend(rideId, nextStatus) {
-            let formData = new FormData();
-            formData.append('ride_id', rideId);
-            formData.append('status', nextStatus);
-
-            fetch('api_update_status.php', {
-                method: 'POST', body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    localTripStatus[rideId] = nextStatus;
-                    updateButtonUI(nextStatus);
-                    if(nextStatus === 4) {
-                        setTimeout(() => {
-                            const modalEl = document.getElementById('detailsModal');
-                            const modalInstance = bootstrap.Modal.getInstance(modalEl);
-                            if(modalInstance) modalInstance.hide();
-                            fetchLatestRides(); // Atualiza lista
-                        }, 1000);
-                    }
+            let formData = new FormData(); formData.append('ride_id', rideId); formData.append('status', nextStatus);
+            fetch('api_update_status.php', { method: 'POST', body: formData }).then(r => r.json()).then(d => {
+                if (d.success) {
+                    localTripStatus[rideId] = nextStatus; updateButtonUI(nextStatus);
+                    if(nextStatus === 4) { setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('detailsModal')).hide(); fetchLatestRides(); }, 1000); }
                 } else { alert('Erro ao atualizar estado.'); }
-            })
-            .catch(error => console.error('Erro:', error));
+            }).catch(e => console.error(e));
         }
-
-        // --- BOTÃO DINÂMICO ---
-        const btnAction = document.getElementById('btnDynamicAction');
-        if(btnAction) {
-            btnAction.addEventListener('click', function() {
+        if(document.getElementById('btnDynamicAction')) {
+            document.getElementById('btnDynamicAction').addEventListener('click', function() {
                 if(!currentRideData) return;
-                const rideId = currentRideData.id;
-                const currentStatus = localTripStatus[rideId];
-                const nextStatus = currentStatus + 1;
-
+                const rideId = currentRideData.id; const currentStatus = localTripStatus[rideId]; const nextStatus = currentStatus + 1;
                 if(nextStatus > 4) return;
+                
+                if(currentStatus === 0) { 
+                    if(!confirm("Iniciar recolha e abrir GPS?")) return; 
+                    
+                    // --- NOVA LÓGICA WHATSAPP ---
+                    if (currentRideData.clientnumber) {
+                        let cNum = currentRideData.clientnumber.replace(/[^0-9]/g, '');
+                        if (cNum.length > 7) {
+                            // Calcula URL base do sistema para o track.php (assume estrutura padrão)
+                            // Se estiver em .../Includes/dist/pages/driver.php, queremos subir para a raiz
+                            let baseUrl = window.location.href.split('/Includes/dist/pages/')[0];
+                            let trackLink = baseUrl + '/track.php?id=' + rideId;
+                            let msg = encodeURIComponent("Hello! Your driver is on the way. Track your driver localization here: " + trackLink);
+                            
+                            // Abre WhatsApp (numa nova janela/tab para nao interferir com o Waze)
+                            window.open("https://wa.me/" + cNum + "?text=" + msg, '_blank');
+                        }
+                    }
+                    // ----------------------------
 
-                if(currentStatus === 0) {
-                    if(!confirm("Iniciar recolha e abrir GPS?")) return;
-                    startLiveTracking(rideId);
-                    openWaze(currentRideData.start);
+                    startLiveTracking(rideId); 
+                    openWaze(currentRideData.start); 
                 }
-                else if(currentStatus === 1) {
-                    if(!confirm("Confirma que chegou ao ponto de recolha?")) return;
-                }
-                else if(currentStatus === 2) {
-                    if(!confirm("Cliente a bordo? Iniciar viagem para destino.")) return;
-                    openWaze(currentRideData.end);
-                }
-                else if(currentStatus === 3) {
-                    if(!confirm("Terminar viagem e fechar serviço?")) return;
-                    stopLiveTracking();
-                }
-
+                else if(currentStatus === 1) { if(!confirm("Confirma que chegou?")) return; }
+                else if(currentStatus === 2) { if(!confirm("Iniciar viagem para destino?")) return; openWaze(currentRideData.end); }
+                else if(currentStatus === 3) { if(!confirm("Terminar serviço?")) return; stopLiveTracking(); }
+                
                 updateStatusBackend(rideId, nextStatus);
             });
         }
 
-        // --- FILTROS ---
-        function formatDate(date) {
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, "0");
-            const d = String(date.getDate()).padStart(2, "0");
-            return `${y}-${m}-${d}`;
-        }
-
+        // --- 6. RENDER LIST ---
+        function formatDate(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
         function filterTrips(filter) {
-            currentFilter = filter;
-            if (typeof viagens === 'undefined') return;
-            const t = new Date();
-            const y = new Date(t); y.setDate(t.getDate() - 1);
-            const tm = new Date(t); tm.setDate(t.getDate() + 1);
+            currentFilter = filter; if (typeof viagens === 'undefined') return;
+            const t = new Date(); const y = new Date(t); y.setDate(t.getDate() - 1); const tm = new Date(t); tm.setDate(t.getDate() + 1);
             const map = { "yesterday": formatDate(y), "today": formatDate(t), "tomorrow": formatDate(tm) };
-            const res = viagens.filter(v => v.serviceDate === map[filter]);
-            renderList(res);
+            renderList(viagens.filter(v => v.serviceDate === map[filter]));
         }
-
         function renderList(data) {
-            const el = document.querySelector(".list-group");
-            if(!el) return;
-            el.innerHTML = ""; 
-            if (data.length === 0) {
-                el.innerHTML = "<div class='text-center py-5 text-muted opacity-50'><i class='bi bi-calendar-x fs-1'></i><p>Sem viagens.</p></div>";
-                return;
-            }
+            const el = document.getElementById("rideList"); if(!el) return; el.innerHTML = "";
+            if (data.length === 0) { el.innerHTML = "<div class='text-center py-5 text-muted'><i class='bi bi-calendar-x fs-1 opacity-50'></i><p class='mt-2'>Sem serviços.</p></div>"; return; }
             data.forEach(v => {
-                const isPriv = (v.serviceType == 1);
-                const borderColor = isPriv ? "#0d6efd" : "#ffc107";
-                const badge = isPriv ? '<span class="badge bg-primary rounded-pill">Privado</span>' : '<span class="badge bg-warning text-dark rounded-pill">Partilhado</span>';
-                const status = localTripStatus[v.ServiceID] !== undefined ? localTripStatus[v.ServiceID] : v.status_id;
-                const opacity = status >= 4 ? '0.6' : '1';
+                const isPriv = (v.serviceType == 1); const badgeClass = isPriv ? 'badge-private' : 'badge-shared'; const badgeText = isPriv ? 'Privado' : 'Partilhado';
+                el.innerHTML += `<div class="ride-card open-modal" data-id="${v.ServiceID}" data-start="${v.serviceStartPoint}" data-end="${v.serviceTargetPoint}" 
+                        data-time="${v.serviceStartTime.substr(0, 5)}" data-date="${v.serviceDate}" data-paxadt="${v.paxADT||0}" data-paxchd="${v.paxCHD||0}"
+                        data-flight="${v.FlightNumber || ''}" data-client="${v.NomeCliente || ''}" data-clientnumber="${v.ClientNumber || ''}" data-price="${v.total_price || ''}">
+                    <div class="ride-header"><div class="ride-time">${v.serviceStartTime.substr(0, 5)}</div><span class="ride-badge ${badgeClass}">${badgeText}</span></div>
+                    <div class="card-timeline"><div class="ct-point"><div class="ct-dot dot-pickup"></div><span class="ct-text">${v.serviceStartPoint}</span></div>
+                    <div class="ct-point"><div class="ct-dot dot-dropoff"></div><span class="ct-text">${v.serviceTargetPoint}</span></div></div>
+                    ${v.total_price > 0 ? `<div class="price-tag"><i class="bi bi-cash"></i> ${parseFloat(v.total_price).toFixed(2)}€</div>` : ''}</div>`;
+            });
+            document.querySelectorAll(".open-modal").forEach(card => {
+                card.addEventListener("click", () => {
+                    const d = card.dataset; currentRideData = d;
+                    const m = document.getElementById('detailsModal');
+                    m.querySelector("#modalIdDisplay").textContent = d.id;
+                    m.querySelector("#modalPickup").textContent = d.start; m.querySelector("#modalDropoff").textContent = d.end;
+                    
+                    m.querySelector("#modalADT").textContent = d.paxadt; m.querySelector("#modalCHD").textContent = d.paxchd;
+                    m.querySelector("#modalClient").textContent = d.client || 'Cliente'; m.querySelector("#modalClientNumber").textContent = d.clientnumber;
+                    
+                    const wa = document.getElementById('whatsappContainer'); wa.innerHTML = ''; wa.style.display = 'none';
+                    if (d.clientnumber && d.clientnumber.replace(/[^0-9]/g, '').length > 7) { wa.style.display = 'block'; wa.innerHTML = `<a href="https://wa.me/${d.clientnumber.replace(/[^0-9]/g, '')}" target="_blank" class="btn-whatsapp"><i class="bi bi-whatsapp"></i> WhatsApp</a>`; }
+                    
+                    const pc = document.getElementById('priceBadgeContainer'); 
+                    if (d.price && parseFloat(d.price) > 0) { document.getElementById('modalPriceDisplay').textContent = parseFloat(d.price).toFixed(2) + " €"; pc.style.display = "block"; } else { pc.style.display = "none"; }
 
-                const html = `
-                  <div class="card mb-3 border-0 shadow-sm open-modal"
-                       style="border-left: 5px solid ${borderColor}; cursor: pointer; border-radius: 12px; opacity: ${opacity}"
-                       data-id="${v.ServiceID}"
-                       data-start="${v.serviceStartPoint}"
-                       data-end="${v.serviceTargetPoint}"
-                       data-time="${v.serviceStartTime.substr(0, 5)}"
-                       data-date="${v.serviceDate}"
-                       data-paxadt="${v.paxADT||0}"
-                       data-paxchd="${v.paxCHD||0}"
-                       data-flight="${v.FlightNumber || ''}"
-                       data-client="${v.NomeCliente || ''}"
-                       data-clientnumber="${v.ClientNumber || ''}"
-                       data-price="${v.total_price || ''}">
-                    <div class="card-body p-3">
-                       <div class="d-flex justify-content-between align-items-center mb-2">
-                          <h4 class="fw-bold m-0 text-dark">${v.serviceStartTime.substr(0, 5)}</h4>
-                          ${badge}
-                       </div>
-                       <div class="text-truncate mb-1 text-secondary"><i class="bi bi-geo-alt-fill text-success me-2"></i> ${v.serviceStartPoint}</div>
-                       <div class="text-truncate text-dark fw-medium"><i class="bi bi-flag-fill text-danger me-2"></i> ${v.serviceTargetPoint}</div>
-                       
-                       ${v.total_price > 0 ? '<div class="mt-2 text-end"><span class="badge bg-success"><i class="bi bi-cash"></i> Cobrar: ' + parseFloat(v.total_price).toFixed(2) + '€</span></div>' : ''}
-                       
-                    </div>
-                  </div>`;
-                el.innerHTML += html;
+                    // Atualiza Nome para a Placa
+                    let rawName = d.client || "CLIENTE";
+                    const nameEl = document.getElementById('airportClientName');
+                    nameEl.innerHTML = rawName.replace(/\s+/g, '<br>');
+                    
+                    let words = rawName.trim().split(/\s+/).length;
+                    nameEl.style.fontSize = words <= 2 ? "12vw" : "8vw";
+
+                    document.getElementById('airportFlight').textContent = d.flight || "";
+                    const trackLink = document.getElementById("trackFlightLink");
+                    if(d.flight && d.flight.trim() !== '') { trackLink.style.display = "inline-flex"; document.getElementById("modalFlight").textContent = d.flight; trackLink.href = "https://www.flightradar24.com/data/flights/" + d.flight.replace(/\s/g, ''); } else { trackLink.style.display = "none"; }
+
+                    updateButtonUI(localTripStatus[d.id]);
+                    new bootstrap.Modal(m).show();
+                });
             });
         }
-
+        document.querySelectorAll(".filter-btn").forEach(b => { b.addEventListener("click", function() { document.querySelectorAll(".filter-btn").forEach(x => x.classList.remove("active")); this.classList.add("active"); filterTrips(this.dataset.filter); }); });
         filterTrips("today");
 
-        document.querySelectorAll(".filter-btn").forEach(b => {
-            b.addEventListener("click", function() {
-                document.querySelectorAll(".filter-btn").forEach(x => { x.classList.remove("active"); });
-                this.classList.add("active");
-                filterTrips(this.dataset.filter);
-            });
-        });
+        // --- 7. CAMERA & AIRPORT LOGIC (FIXED) ---
+        
+        const airportOverlay = document.getElementById('airportOverlay');
+        const airportContent = document.getElementById('airportContentWrapper');
+        const nameElement = document.getElementById('airportClientName');
 
-        // --- ABRIR MODAL ---
-        const listGroup = document.querySelector(".list-group");
-        if(listGroup) {
-            listGroup.addEventListener("click", e => {
-                const card = e.target.closest(".open-modal");
-                if(!card) return;
-
-                const d = card.dataset;
-                currentRideData = d;
-                
-                const modal = document.getElementById('detailsModal');
-                modal.querySelector("#modalIdDisplay").textContent = d.id;
-                modal.querySelector("#modalPickup").textContent = d.start;
-                modal.querySelector("#modalDropoff").textContent = d.end;
-                modal.querySelector("#modalADT").textContent = d.paxadt;
-                modal.querySelector("#modalCHD").textContent = d.paxchd;
-                modal.querySelector("#modalClient").textContent = d.client || 'Cliente';
-                modal.querySelector("#modalClientNumber").textContent = d.clientnumber;
-                
-                // WHATSAPP
-                const waContainer = document.getElementById('whatsappContainer');
-                waContainer.innerHTML = ''; 
-                waContainer.style.display = 'none';
-                
-                if (d.clientnumber) {
-                    let cleanNum = d.clientnumber.replace(/[^0-9]/g, '');
-                    if (cleanNum.length > 7) {
-                        waContainer.style.display = 'block';
-                        waContainer.innerHTML = `
-                            <a href="https://wa.me/${cleanNum}" target="_blank" class="btn-whatsapp">
-                                <i class="bi bi-whatsapp me-2"></i> Enviar Mensagem
-                            </a>`;
-                    }
-                }
-                
-                // PREÇO
-                const priceContainer = document.getElementById('priceAlertContainer');
-                const priceDisplay = document.getElementById('modalPriceDisplay');
-                let priceVal = parseFloat(d.price);
-
-                if (d.price && priceVal > 0) {
-                    priceDisplay.textContent = priceVal.toFixed(2) + " €";
-                    priceContainer.style.display = "block";
-                } else {
-                    priceContainer.style.display = "none";
-                }
-
-                // PLACA - NOME GIGANTE
-                let rawClientName = d.client || "CLIENTE";
-                document.getElementById('airportClientName').innerHTML = rawClientName.replace(/\s+/g, '<br>');
-                document.getElementById('airportFlight').textContent = d.flight || "";
-
-                // VOO
-                const fSection = modal.querySelector("#flightSection");
-                if(d.flight && d.flight !== 'N/A' && d.flight.trim() !== '') {
-                    fSection.style.display = "flex";
-                    modal.querySelector("#modalFlight").textContent = d.flight;
-                    modal.querySelector("#trackFlightLink").href = "https://www.flightradar24.com/data/flights/" + d.flight.replace(/\s/g, '');
-                } else {
-                    fSection.style.display = "none";
-                }
-
-                modal.querySelector("#uploadNoShow").dataset.tripId = d.id;
-                modal.querySelector("#uploadVoucher").dataset.tripId = d.id;
-
-                const status = localTripStatus[d.id];
-                updateButtonUI(status);
-
-                new bootstrap.Modal(modal).show();
-            });
-        }
-
-        // --- MODO PLACA ---
         document.getElementById('btnAirportMode').onclick = () => {
-            const overlay = document.getElementById('airportOverlay');
-            overlay.style.display = "flex";
-            overlay.classList.remove("rotate-mode");
-            if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(()=>{});
+            airportOverlay.style.display = "block";
+            airportOverlay.classList.remove('landscape-mode');
         };
+
         document.getElementById('closeAirportMode').onclick = () => {
-            document.getElementById('airportOverlay').style.display = "none";
-            if(document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+            airportOverlay.style.display = "none";
+            airportOverlay.classList.remove('landscape-mode');
         };
+
         document.getElementById('rotateScreenBtn').onclick = () => {
-            document.getElementById('airportOverlay').classList.toggle("rotate-mode");
+            const isLandscape = airportOverlay.classList.toggle('landscape-mode');
+            if (isLandscape) {
+                 let words = nameElement.innerText.split(/\s+/).length;
+                 nameElement.style.fontSize = words <= 2 ? "15vh" : "10vh";
+            } else {
+                 let words = nameElement.innerText.split(/\s+/).length;
+                 nameElement.style.fontSize = words <= 2 ? "15vw" : "10vw";
+            }
         };
 
-        // --- CÂMERA FULL SCREEN ---
-        const video = document.getElementById('cameraStream');
-        const canvas = document.getElementById('photoCanvas');
-        const btnCapture = document.getElementById('btnCapture');
-        const btnRetake = document.getElementById('btnRetake');
-        const btnConfirmSend = document.getElementById('btnConfirmSend');
-        const btnRotateCamera = document.getElementById('btnRotateCamera');
-        const cameraOverlay = document.getElementById('cameraOverlay');
-        const cameraLoading = document.getElementById('cameraLoading');
-
-        const stepCaptureControls = document.getElementById('stepCaptureControls');
-        const stepConfirmControls = document.getElementById('stepConfirmControls');
-
-        function stopCameraStream() { 
-            if (stream) { 
-                stream.getTracks().forEach(t => t.stop()); 
-                stream = null; 
-            } 
-            if (locationWatcher) {
-                navigator.geolocation.clearWatch(locationWatcher);
-                locationWatcher = null;
-            }
-        }
-
-        function closeCameraOverlay() {
-            stopCameraStream();
-            cameraOverlay.style.display = 'none';
-        }
-
+        // --- Camera Logic ---
+        const video = document.getElementById('cameraStream'); const canvas = document.getElementById('photoCanvas');
+        const camOverlay = document.getElementById('cameraOverlay'); const loading = document.getElementById('cameraLoading');
+        const btnSend = document.getElementById('btnConfirmSend');
+        
+        function stopCameraStream() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } if(locationWatcher) navigator.geolocation.clearWatch(locationWatcher); }
+        function closeCameraOverlay() { stopCameraStream(); camOverlay.style.display = 'none'; }
+        
         function updateCameraUI(state) {
-            const show = (el) => { el.classList.remove('d-none'); el.classList.add('d-flex'); };
-            const hide = (el) => { el.classList.remove('d-flex'); el.classList.add('d-none'); };
-
-            if (state === 'loading') {
-                cameraLoading.style.display = 'block';
-                video.style.display = 'none';
-                canvas.style.display = 'none';
-                hide(stepCaptureControls);
-                hide(stepConfirmControls);
-            } 
-            else if (state === 'capture') {
-                cameraLoading.style.display = 'none';
-                video.style.display = 'block';
-                canvas.style.display = 'none';
-                show(stepCaptureControls);
-                hide(stepConfirmControls);
-            }
-            else if (state === 'review') {
-                cameraLoading.style.display = 'none';
-                video.style.display = 'none';
-                canvas.style.display = 'block';
-                hide(stepCaptureControls);
-                show(stepConfirmControls);
-                btnConfirmSend.disabled = false;
-                btnConfirmSend.innerHTML = '<i class="bi bi-send-fill me-2"></i> Enviar';
-            }
-            else if (state === 'sending') {
-                btnConfirmSend.disabled = true;
-                btnConfirmSend.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> A enviar...';
-            }
+             const cCap = document.getElementById('stepCaptureControls');
+             const cConf = document.getElementById('stepConfirmControls');
+             if (state === 'loading') { loading.style.display='block'; video.style.display='none'; canvas.style.display='none'; cCap.classList.add('d-none'); cConf.classList.add('d-none'); }
+             else if (state === 'capture') { loading.style.display='none'; video.style.display='block'; canvas.style.display='none'; cCap.classList.remove('d-none'); cCap.classList.add('d-flex'); cConf.classList.remove('d-flex'); cConf.classList.add('d-none'); }
+             else if (state === 'review') { loading.style.display='none'; video.style.display='none'; canvas.style.display='block'; cCap.classList.remove('d-flex'); cCap.classList.add('d-none'); cConf.classList.remove('d-none'); cConf.classList.add('d-flex'); btnSend.disabled=false; btnSend.innerHTML='Enviar'; }
+             else if (state === 'sending') { btnSend.disabled=true; btnSend.innerHTML='A enviar...'; }
         }
 
         async function startCamera() {
-            if (stream) stopCameraStream();
-            cameraOverlay.style.display = 'flex';
-            updateCameraUI('loading');
-
-            const constraints = { video: { facingMode: currentFacingMode } };
-
-            try { 
-                stream = await navigator.mediaDevices.getUserMedia(constraints); 
-                video.srcObject = stream; 
-                video.onloadedmetadata = () => { updateCameraUI('capture'); };
-            } catch (err) { 
-                try { 
-                    stream = await navigator.mediaDevices.getUserMedia({ video: true }); 
-                    video.srcObject = stream; 
-                    video.onloadedmetadata = () => { updateCameraUI('capture'); };
-                } catch (e) {
-                    alert('Erro ao aceder à câmara: ' + e.message);
-                    closeCameraOverlay();
-                    return;
-                } 
-            }
-
-            currentLat = null; currentLng = null;
-            if ("geolocation" in navigator) {
-                locationWatcher = navigator.geolocation.watchPosition(
-                    (pos) => {
-                        currentLat = pos.coords.latitude;
-                        currentLng = pos.coords.longitude;
-                    },
-                    (err) => console.log("GPS warmup error", err),
-                    { enableHighAccuracy: true, maximumAge: 0 }
-                );
-            }
+            stopCameraStream(); camOverlay.style.display = 'flex'; updateCameraUI('loading');
+            try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode } }); video.srcObject = stream; video.onloadedmetadata = () => updateCameraUI('capture'); } 
+            catch (e) { alert('Erro: '+e.message); closeCameraOverlay(); return; }
+            if ("geolocation" in navigator) locationWatcher = navigator.geolocation.watchPosition(p => { currentLat=p.coords.latitude; currentLng=p.coords.longitude; }, e=>{}, {enableHighAccuracy:true});
         }
-
-        function openCamera(mode) {
-            currentMode = mode;
-            document.getElementById('cameraInstruction').textContent = (mode === 'voucher') ? "Fotografar Voucher" : "Fotografar No-Show";
-            startCamera();
-        }
-
-        document.getElementById('uploadNoShow').addEventListener('click', () => openCamera('noshow'));
-        document.getElementById('uploadVoucher').addEventListener('click', () => openCamera('voucher'));
-
-        btnRotateCamera.addEventListener('click', () => {
-            currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
-            startCamera();
-        });
-
-        btnCapture.addEventListener('click', () => {
-            if (!stream) return;
-            const ctx = canvas.getContext('2d');
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
-            updateCameraUI('review');
-        });
-
-        btnRetake.addEventListener('click', () => { updateCameraUI('capture'); });
-
-        btnConfirmSend.addEventListener('click', () => {
+        
+        function openCamera(mode) { currentMode = mode; document.getElementById('cameraInstruction').textContent = (mode==='voucher'?'Fotografar Voucher':'Fotografar No-Show'); startCamera(); }
+        document.getElementById('uploadNoShow').onclick = () => openCamera('noshow');
+        document.getElementById('uploadVoucher').onclick = () => openCamera('voucher');
+        document.getElementById('btnRotateCamera').onclick = () => { currentFacingMode = (currentFacingMode==='environment'?'user':'environment'); startCamera(); };
+        document.getElementById('btnCapture').onclick = () => { if(!stream) return; canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0); updateCameraUI('review'); };
+        document.getElementById('btnRetake').onclick = () => updateCameraUI('capture');
+        
+        btnSend.onclick = () => {
             updateCameraUI('sending');
-            const imgData = canvas.toDataURL('image/jpeg');
-            const payload = { trip_id: currentRideData.id, image_data: imgData, lat: currentLat, lng: currentLng };
-            const endpoint = currentMode === 'voucher' ? 'upload_voucher.php' : 'upload_no_show.php';
+            const img = canvas.toDataURL('image/jpeg');
+            fetch(currentMode === 'voucher' ? 'upload_voucher.php' : 'upload_no_show.php', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ trip_id: currentRideData.id, image_data: img, lat: currentLat, lng: currentLng }) })
+            .then(r=>r.json()).then(d=>{ if(d.success) { alert(d.message); closeCameraOverlay(); if(currentMode==='noshow'){ stopLiveTracking(); updateStatusBackend(currentRideData.id, 4); } } else { alert('Erro: '+d.message); updateCameraUI('review'); } })
+            .catch(e=>{ alert('Erro conexão'); updateCameraUI('review'); });
+        };
 
-            fetch(endpoint, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(r => r.json())
-            .then(d => {
-                if (d.success) {
-                    alert(d.message); 
-                    closeCameraOverlay();
-                    if (currentMode === 'noshow') {
-                        stopLiveTracking(); 
-                        updateStatusBackend(currentRideData.id, 4); 
-                    }
-                } else {
-                    alert('Erro do servidor: ' + d.message);
-                    updateCameraUI('review');
-                    btnConfirmSend.innerHTML = '<i class="bi bi-send-fill me-2"></i> Tentar de novo';
-                }
-            })
-            .catch(e => {
-                alert('Erro de conexão.');
-                console.error(e);
-                updateCameraUI('review');
-                btnConfirmSend.innerHTML = '<i class="bi bi-send-fill me-2"></i> Tentar de novo';
-            });
-        });
-
-        const photoModal = document.getElementById('photoModal');
-        if(photoModal) {
-            photoModal.addEventListener('show.bs.modal', function () {
-                const imgEl = document.querySelector('img.user-image');
-                if(imgEl) document.getElementById('currentProfilePhoto').src = imgEl.src;
-                document.getElementById('profilePhotoInput').value = '';
-            });
-            document.getElementById('profilePhotoInput').addEventListener('change', function(e) {
-                const [file] = e.target.files;
-                if (file) document.getElementById('currentProfilePhoto').src = URL.createObjectURL(file); 
-            });
+        const pModal = document.getElementById('photoModal');
+        if(pModal) {
+            pModal.addEventListener('show.bs.modal', () => { document.getElementById('profilePhotoInput').value = ''; });
+            document.getElementById('profilePhotoInput').onchange = (e) => { const [f] = e.target.files; if (f) document.getElementById('currentProfilePhoto').src = URL.createObjectURL(f); };
         }
     </script>
   </body>

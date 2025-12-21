@@ -17,10 +17,11 @@ try {
         throw new Exception("Preencha os campos obrigatórios");
     }
 
-    // 2. Query com nomes de colunas CORRETOS (baseado no teu addRide.php)
+    // 2. Query ATUALIZADA com 'ClientNumber' e 'total_price'
+    // Note que adicionei as colunas no INSERT e os placeholders (?, ?) no VALUES
     $stmt = $pdo->prepare("INSERT INTO Services 
-        (serviceDate, serviceStartTime, serviceStartPoint, serviceTargetPoint, paxADT, paxCHD, NomeCliente, FlightNumber, partner_id, status_pedido, serviceType) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', 1)");
+        (serviceDate, serviceStartTime, serviceStartPoint, serviceTargetPoint, paxADT, paxCHD, NomeCliente, FlightNumber, partner_id, status_pedido, serviceType, ClientNumber, total_price) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendente', 1, ?, ?)");
 
     $result = $stmt->execute([
         $_POST['date'],              // serviceDate
@@ -31,7 +32,11 @@ try {
         $_POST['pax_chd'] ?? 0,      // paxCHD
         $_POST['client_name'],       // NomeCliente
         $_POST['flight'] ?? '',      // FlightNumber
-        $_SESSION['user_id']         // partner_id
+        $_SESSION['user_id'],        // partner_id
+        
+        // NOVOS CAMPOS:
+        $_POST['client_phone'] ?? '', // ClientNumber (Usei 'client_phone' como nome esperado do POST)
+        $_POST['price'] ?? null       // total_price (Usei 'price' como nome esperado do POST)
     ]);
 
     if ($result) {
